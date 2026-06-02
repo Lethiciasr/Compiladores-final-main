@@ -57,6 +57,7 @@ int escopo_atual = 0;
 %type <info> expressao
 %type <valor_str> if_cond
 %type <valor_str> incremento_for
+%type <valor_str> for_init
 
 %%
 
@@ -85,8 +86,19 @@ if_cond : TOKEN_IF '(' expressao ')' {
     }
     char* l_false = novo_label();
     
-    sprintf(buf, "ifFalse %s goto %s;\n", $3.temp, l_false);
+    /* --- INICIO DA MODIFICACAO --- */
+    char* t_inv = novo_temp(T_BOOL);
+    
+    // 1. Nega o resultado original
+    sprintf(buf, "%s = !%s;\n", t_inv, $3.temp);
     strcat(instrucoes, buf);
+    
+    // 2. Verifica se a negacao eh verdadeira para pular
+    sprintf(buf, "if %s goto %s;\n", t_inv, l_false);
+    strcat(instrucoes, buf);
+
+    strcat(instrucoes, "\n");
+    /* --- FIM DA MODIFICACAO --- */
     
     sprintf(buf, "if (%s) {\n", $3.c_expr);
     strcat(c_body, buf);
@@ -95,15 +107,36 @@ if_cond : TOKEN_IF '(' expressao ')' {
 }
 ;
 
-/* --- REGRA AUXILIAR DO FOR --- */
+/* --- REGRAS AUXILIARES DO FOR --- */
+for_init : ID ASSIGN expressao {
+    Simbolo *s = buscar($1);
+    if (!s) {
+        yyerror("Erro: Variavel nao declarada na inicializacao do for.");
+    } else {
+        // Gera o 3AC direto
+        sprintf(buf, "%s = %s;\n", s->temp, $3.temp);
+        strcat(instrucoes, buf);
+        
+        // Em vez de imprimir no C, retorna a string formatada
+        char* init_str = (char*) malloc(256);
+        sprintf(init_str, "%s = %s", s->nome, $3.c_expr);
+        $$ = init_str;
+    }
+}
+;
+
 incremento_for : ID ASSIGN expressao {
     Simbolo *s = buscar($1);
     if (!s) {
         yyerror("Erro: Variavel nao declarada no incremento do for.");
     } else {
-        // Guarda o código em vez de imprimir direto nos buffers principais
+        // Guarda o 3AC na variavel temporaria
         sprintf(inc_3ac, "%s = %s;\n", s->temp, $3.temp);
-        sprintf(inc_c, "%s = %s;\n", s->nome, $3.c_expr);
+        
+        // Em vez de imprimir no C, retorna a string formatada
+        char* inc_str = (char*) malloc(256);
+        sprintf(inc_str, "%s = %s", s->nome, $3.c_expr);
+        $$ = inc_str;
     }
 }
 ;
@@ -122,11 +155,19 @@ caso : TOKEN_CASE expressao ':' {
         sprintf(buf, "%s = %s == %s;\n", t_cmp, switch_exp, $2.temp);
         strcat(instrucoes, buf);
 
-        // 3. Se falso, pula pro próximo case
-        sprintf(buf, "ifFalse %s goto %s;\n", t_cmp, l_proximo);
+        /* --- INICIO DA MODIFICACAO --- */
+        char* t_inv = novo_temp(T_BOOL);
+        
+        // 3. Nega a comparacao
+        sprintf(buf, "%s = !%s;\n", t_inv, t_cmp);
         strcat(instrucoes, buf);
 
-        // 4. Código C
+        // 4. Se a negacao for verdadeira, pula pro proximo case
+        sprintf(buf, "if %s goto %s;\n", t_inv, l_proximo);
+        strcat(instrucoes, buf);
+        /* --- FIM DA MODIFICACAO --- */
+
+        // 5. Código C
         sprintf(buf, "case %s:\n", $2.c_expr);
         strcat(c_body, buf);
 
@@ -232,6 +273,7 @@ comando : declaracao ';'
             strcat(c_body, "}\n");
         } 
         | TOKEN_WHILE {
+            strcat(instrucoes, "\n");
             char* l_inicio = novo_label();
             sprintf(buf, "%s:\n", l_inicio);
             strcat(instrucoes, buf);
@@ -244,25 +286,26 @@ comando : declaracao ';'
             if ($4.tipo_val != T_BOOL) yyerror("Erro Semantico: Condicao deve ser booleana.");
             
             char* l_fim = novo_label();
-            sprintf(buf, "ifFalse %s goto %s;\n", $4.temp, l_fim);
+            
+            /* --- INICIO DA MODIFICACAO --- */
+            char* t_inv = novo_temp(T_BOOL);
+            
+            sprintf(buf, "%s = !%s;\n", t_inv, $4.temp);
             strcat(instrucoes, buf);
+            
+            sprintf(buf, "if %s goto %s;\n", t_inv, l_fim);
+            strcat(instrucoes, buf);
+
+            strcat(instrucoes, "\n");
+            /* --- FIM DA MODIFICACAO --- */
+            
             sprintf(buf, "while (%s) {\n", $4.c_expr);
             strcat(c_body, buf);
             $<valor_str>$ = l_fim; 
             
             // --- LINHAS NOVAS 2 e 3: Salva o fim e sobe a pilha ---
             strcpy(pilha_fim[topo_laco], l_fim);
-            topo_laco++; 
-            
-        } comando {
-            // --- LINHA NOVA 4: Desce a pilha pois o laço acabou ---
-            topo_laco--; 
-            
-            sprintf(buf, "goto %s;\n", $<valor_str>2); 
-            strcat(instrucoes, buf);
-            sprintf(buf, "%s:\n", $<valor_str>6); 
-            strcat(instrucoes, buf);
-            strcat(c_body, "}\n");
+            topo_laco++;
         }
         | TOKEN_DO {
             char* l_inicio = novo_label();
@@ -286,46 +329,63 @@ comando : declaracao ';'
             sprintf(buf, "} while (%s);\n", $6.c_expr);
             strcat(c_body, buf);
         }
-        | TOKEN_FOR '(' atribuicao ';' {
-            // 1. A inicialização já foi impressa pela 'atribuicao'.
-            
-            // 2. Marca o rótulo de INÍCIO
+        | TOKEN_FOR '(' for_init ';' {
+            // 1. Marca visualmente no 3AC que é um FOR
+            strcat(instrucoes, "\n");
             char* l_inicio = novo_label();
             sprintf(buf, "%s:\n", l_inicio);
             strcat(instrucoes, buf);
             $<valor_str>$ = l_inicio; // Salva na posição $5
             
+            // Salva o início na pilha para o 'continue'
+            strcpy(pilha_inicio[topo_laco], l_inicio);
+            
         } expressao ';' {
-            // 3. Verifica a CONDIÇÃO
+            // 2. Verifica a CONDIÇÃO
             if ($6.tipo_val != T_BOOL) {
                 yyerror("Erro Semantico: A condicao do 'for' deve ser booleana.");
             }
             char* l_fim = novo_label();
-            sprintf(buf, "ifFalse %s goto %s;\n", $6.temp, l_fim);
+            
+            /* --- INICIO DA MODIFICACAO (TAC INVERSO) --- */
+            char* t_inv = novo_temp(T_BOOL);
+            sprintf(buf, "%s = !%s;\n", t_inv, $6.temp);
             strcat(instrucoes, buf);
+            
+            sprintf(buf, "if %s goto %s;\n", t_inv, l_fim);
+            strcat(instrucoes, buf);
+            /* --- FIM DA MODIFICACAO --- */
+            
             $<valor_str>$ = l_fim; // Salva na posição $8
             
-            // Converte o FOR num WHILE no código C gerado (mesma semântica!)
-            sprintf(buf, "while (%s) {\n", $6.c_expr);
+            // Salva o fim na pilha para o 'break' e sobe a pilha
+            strcpy(pilha_fim[topo_laco], l_fim);
+            topo_laco++; 
+            
+            // GERA O 'FOR' LITERAL NO CÓDIGO C (Usando o init guardado no $3 e cond no $6)
+            sprintf(buf, "for (%s; %s; ", $3, $6.c_expr);
             strcat(c_body, buf);
             
-        } incremento_for ')' comando {
-            // 4. Chegamos no final do laço!
+        } incremento_for ')' {
+            // 3. Fecha os parênteses do FOR no C (Usando o incremento guardado no $9)
+            sprintf(buf, "%s) {\n", $9);
+            strcat(c_body, buf);
             
-            // Imprime o incremento que estava "guardado"
+        } comando {
+            // 4. Chegamos no final do laço!
+            topo_laco--; // Desce a pilha de laços
+            
+            // Imprime o incremento do 3AC que estava guardado
             strcat(instrucoes, inc_3ac);
             
-            // Imprime o incremento no C
-            sprintf(buf, "%s", inc_c);
-            strcat(c_body, buf);
-            
-            // Pula de volta pro início
+            // Pula de volta pro início no 3AC
             sprintf(buf, "goto %s;\n", $<valor_str>5);
             strcat(instrucoes, buf);
             
-            // Marca o rótulo de FIM
+            // Marca o rótulo de FIM no 3AC
             sprintf(buf, "%s:\n", $<valor_str>8);
             strcat(instrucoes, buf);
+            strcat(instrucoes, "\n");
             
             // Fecha a chave no C
             strcat(c_body, "}\n");
@@ -853,7 +913,7 @@ int main() {
     printf("int main()\n");
     printf("{\n");
 
-    printf("%s", declaracoes);
+    printf("%s\n", declaracoes);
     printf("%s", instrucoes);
 
     printf("    return 0;\n");
@@ -881,6 +941,14 @@ int main() {
     
     // IMPORTANTE: Fechar o arquivo antes de o GCC tentar acessá-lo!
     fclose(arquivo_c);
+
+    int status_gcc = system("gcc saida.c -o programa.exe");
+    
+    if (status_gcc == 0) {
+        printf("Finalizado com sucesso");
+    } else {
+        printf("Erro na compilacao.\n");
+    }
 
     return 0;
 }

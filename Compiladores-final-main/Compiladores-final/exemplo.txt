@@ -1,11 +1,8 @@
 main() {
-    int a;
-    int x;
+    string nome;
+    nome = "teste";
 
-    a = 2;
-    x = 1;
-
-    if (a == x) {
-        print(1);
-    }
+    print(nome);
 }
+
+    
