@@ -94,7 +94,7 @@ if_cond : TOKEN_IF '(' expressao ')' {
     strcat(instrucoes, buf);
     
     // 2. Verifica se a negacao eh verdadeira para pular
-    sprintf(buf, "if %s goto %s;\n", t_inv, l_false);
+    sprintf(buf, "if (%s) goto %s;\n", t_inv, l_false);
     strcat(instrucoes, buf);
 
     strcat(instrucoes, "\n");
@@ -163,7 +163,7 @@ caso : TOKEN_CASE expressao ':' {
         strcat(instrucoes, buf);
 
         // 4. Se a negacao for verdadeira, pula pro proximo case
-        sprintf(buf, "if %s goto %s;\n", t_inv, l_proximo);
+        sprintf(buf, "if (%s) goto %s;\n", t_inv, l_proximo);
         strcat(instrucoes, buf);
         /* --- FIM DA MODIFICACAO --- */
 
@@ -196,21 +196,18 @@ comando : declaracao ';'
         | atribuicao ';'
         | expressao ';' 
         | bloco 
-        | TOKEN_PRINT '(' expressao ')' ';' {
-            // 1. Gera o Código Intermediário (3AC)
-            sprintf(buf, "print %s;\n", $3.temp);
-            strcat(instrucoes, buf);
-
-            // 2. Descobre o formato para o printf do C
+        | TOKEN_PRINT '(' expressao ')' ';'
+        {
+            // Descobre o formato para o printf do C
             char* formato = "";
             if ($3.tipo_val == T_INT || $3.tipo_val == T_BOOL) formato = "%d";
             else if ($3.tipo_val == T_FLOAT) formato = "%f";
             else if ($3.tipo_val == T_CHAR) formato = "%c";
             else if ($3.tipo_val == T_STRING) formato = "%s";
 
-            // 3. Gera o Código C
-            sprintf(buf, "printf(\"%s\\n\", %s);\n", formato, $3.c_expr);
-            strcat(c_body, buf);
+            // Gera o Código Intermediário já como printf válido no C
+            sprintf(buf, "printf(\"%s\\n\", %s);\n", formato, $3.temp);
+            strcat(instrucoes, buf);
         }
         /* --- COMANDO DE ENTRADA (READ) --- */
         | TOKEN_READ '(' ID ')' ';' {
@@ -293,7 +290,7 @@ comando : declaracao ';'
             sprintf(buf, "%s = !%s;\n", t_inv, $4.temp);
             strcat(instrucoes, buf);
             
-            sprintf(buf, "if %s goto %s;\n", t_inv, l_fim);
+            sprintf(buf, "if (%s) goto %s;\n", t_inv, l_fim);
             strcat(instrucoes, buf);
 
             strcat(instrucoes, "\n");
@@ -322,7 +319,7 @@ comando : declaracao ';'
             }
             
             // Pula para o início se for verdadeiro
-            sprintf(buf, "if %s goto %s;\n", $6.temp, $<valor_str>2);
+            sprintf(buf, "if (%s) goto %s;\n", $6.temp, $<valor_str>2);
             strcat(instrucoes, buf);
             
             // Código C
@@ -352,7 +349,7 @@ comando : declaracao ';'
             sprintf(buf, "%s = !%s;\n", t_inv, $6.temp);
             strcat(instrucoes, buf);
             
-            sprintf(buf, "if %s goto %s;\n", t_inv, l_fim);
+            sprintf(buf, "if (%s) goto %s;\n", t_inv, l_fim);
             strcat(instrucoes, buf);
             /* --- FIM DA MODIFICACAO --- */
             
@@ -899,12 +896,11 @@ expressao : NUM_INT {
 
 int main() {
     yyparse();
-
     if (houve_erro) {
         return 1;
     }
 
-    /* 1. VISUALIZAÇÃO DO CÓDIGO INTERMEDIÁRIO (Apenas Terminal) */
+    /* 1. VISUALIZAÇÃO DO CÓDIGO INTERMEDIÁRIO (Terminal) */
     printf("#include <stdio.h>\n");
     printf("#include <stdlib.h>\n");
     printf("#include <string.h>\n");
@@ -912,40 +908,33 @@ int main() {
 
     printf("int main()\n");
     printf("{\n");
-
     printf("%s\n", declaracoes);
     printf("%s", instrucoes);
-
     printf("    return 0;\n");
     printf("}\n");
 
-
-    /* 2. VISUALIZAÇÃO E GERAÇÃO DO CÓDIGO C (Terminal + Arquivo) */
+    /* 2. GERAÇÃO DO CÓDIGO (Arquivo saida.c) */
     FILE *arquivo_c = fopen("saida.c", "w");
     if (!arquivo_c) {
         printf("Erro: Nao foi possivel criar o arquivo saida.c\n");
         return 1;
     }
 
-    // Imprime o cabeçalho na tela e no arquivo
-
     fprintf(arquivo_c, "#include <stdio.h>\n");
+    fprintf(arquivo_c, "#include <stdlib.h>\n");
+    fprintf(arquivo_c, "#include <string.h>\n");
     fprintf(arquivo_c, "#include <stdbool.h>\n\n");
-    fprintf(arquivo_c, "int main() {\n");
-
-    fprintf(arquivo_c, "\n%s", c_decl);
-    fprintf(arquivo_c, "%s", c_body);
-
-
-    fprintf(arquivo_c, "    return 0;\n}\n");
     
-    // IMPORTANTE: Fechar o arquivo antes de o GCC tentar acessá-lo!
+    fprintf(arquivo_c, "int main()\n{\n");
+    fprintf(arquivo_c, "%s\n", declaracoes);
+    fprintf(arquivo_c, "%s", instrucoes);
+    fprintf(arquivo_c, "    return 0;\n}\n");
+
     fclose(arquivo_c);
 
     int status_gcc = system("gcc saida.c -o programa.exe");
-    
     if (status_gcc == 0) {
-        printf("Finalizado com sucesso");
+        printf("Finalizado com sucesso\n");
     } else {
         printf("Erro na compilacao.\n");
     }

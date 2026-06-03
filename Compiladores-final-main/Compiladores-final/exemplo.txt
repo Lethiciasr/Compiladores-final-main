@@ -1,8 +1,15 @@
 main() {
-    string nome;
-    nome = "teste";
+    int a;
+    int i;
 
-    print(nome);
+    a = 1;
+    for (i = 1; i <= 10; i = i + 1){
+        print(i);
+        int a;
+        a = 2;
+    }
+
+    a = 3;
 }
 
     
