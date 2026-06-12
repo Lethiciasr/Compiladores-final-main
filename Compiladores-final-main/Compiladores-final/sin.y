@@ -5,6 +5,7 @@
 #include <stdbool.h>
 #include "tabela.h"
 
+int cont_read = 0;
 int houve_erro = 0;
 int dentro_switch = 0;
 extern int yylex();
@@ -33,6 +34,7 @@ int escopo_atual = 0;
         char* temp;
         char* c_expr;
         int tipo_val;
+        int tam_str;
     } info;
 }
 
@@ -209,35 +211,31 @@ comando : declaracao ';'
             sprintf(buf, "printf(\"%s\\n\", %s);\n", formato, $3.temp);
             strcat(instrucoes, buf);
         }
-        /* --- COMANDO DE ENTRADA (READ) --- */
-        | TOKEN_READ '(' ID ')' ';' {
-            Simbolo *s = buscar($3);
-            if (!s) {
-                char erro_msg[100];
-                sprintf(erro_msg, "Erro: Variavel '%s' nao declarada para leitura.", $3);
-                yyerror(erro_msg);
-            } else {
-                // 1. Gera o Código Intermediário (3AC)
-                sprintf(buf, "read %s;\n", s->nome); 
-                strcat(instrucoes, buf);
-
-                // 2. Descobre o formato para o scanf do C
-                char* formato = "";
-                if (s->tipo == T_INT || s->tipo == T_BOOL) formato = "%d";
-                else if (s->tipo == T_FLOAT) formato = "%f";
-                else if (s->tipo == T_CHAR) formato = " %c"; 
-
-                // 3. Gera o Código C 
-                if (s->tipo == T_STRING) {
-                    sprintf(buf, "%s = (char*) malloc(256);\n", s->nome);
-                    strcat(c_body, buf);
-                    sprintf(buf, "scanf(\"%%s\", %s);\n", s->nome);
+            /* --- COMANDO DE ENTRADA (READ) --- */
+            | TOKEN_READ '(' ID ')' ';' {
+                Simbolo *s = buscar($3);
+                if (!s) {
+                    char erro_msg[100];
+                    sprintf(erro_msg, "Erro: Variavel '%s' nao declarada para leitura.", $3);
+                    yyerror(erro_msg);
                 } else {
-                    sprintf(buf, "scanf(\"%s\", &%s);\n", formato, s->nome);
+                    // 1. Descobre o formato para o scanf do C
+                    char* formato = "";
+                    if (s->tipo == T_INT || s->tipo == T_BOOL) formato = "%d";
+                    else if (s->tipo == T_FLOAT) formato = "%f";
+                    else if (s->tipo == T_CHAR) formato = " %c"; 
+
+                    // 2. Gera o scanf correspondente direto na variável 'instrucoes'
+                    if (s->tipo == T_STRING) {
+                        // Limita o scanf a 255 letras para evitar que estoure o array de 256
+                        sprintf(buf, "scanf(\"%%255s\", %s);\n", s->temp);
+                        strcat(instrucoes, buf);
+                    } else {
+                        sprintf(buf, "scanf(\"%s\", &%s);\n", formato, s->temp);
+                        strcat(instrucoes, buf); 
+                    }
                 }
-                strcat(c_body, buf);
             }
-        } 
         | if_cond comando {
             // IF SIMPLES (Sem else)
             sprintf(buf, "%s:\n", $<valor_str>1); // Puxa o rótulo do if_cond
@@ -303,6 +301,21 @@ comando : declaracao ';'
             // --- LINHAS NOVAS 2 e 3: Salva o fim e sobe a pilha ---
             strcpy(pilha_fim[topo_laco], l_fim);
             topo_laco++;
+        } comando { 
+            
+            // 1. Desce o topo da pilha para recuperar os labels deste laço
+            topo_laco--; 
+            
+            // 2. No final do bloco, o TAC precisa voltar para o início do teste condicional
+            sprintf(buf, "goto %s;\n", pilha_inicio[topo_laco]);
+            strcat(instrucoes, buf);
+            
+            // 3. Imprime o rótulo de FIM (O L2 que estava faltando!)
+            sprintf(buf, "%s:\n", pilha_fim[topo_laco]);
+            strcat(instrucoes, buf);
+            
+            // 4. Fecha as chaves do bloco no código C
+            strcat(c_body, "}\n");
         }
         | TOKEN_DO {
             char* l_inicio = novo_label();
@@ -330,12 +343,14 @@ comando : declaracao ';'
             // 1. Marca visualmente no 3AC que é um FOR
             strcat(instrucoes, "\n");
             char* l_inicio = novo_label();
+            char* l_incremento = novo_label(); // NOVO RÓTULO: Para o incremento!
+            
             sprintf(buf, "%s:\n", l_inicio);
             strcat(instrucoes, buf);
-            $<valor_str>$ = l_inicio; // Salva na posição $5
+            $<valor_str>$ = l_inicio; // Salva o início (condicional) na posição $5
             
-            // Salva o início na pilha para o 'continue'
-            strcpy(pilha_inicio[topo_laco], l_inicio);
+            // ALTERAÇÃO: Salva o rótulo do INCREMENTO na pilha para o 'continue' pular pra cá
+            strcpy(pilha_inicio[topo_laco], l_incremento);
             
         } expressao ';' {
             // 2. Verifica a CONDIÇÃO
@@ -359,12 +374,12 @@ comando : declaracao ';'
             strcpy(pilha_fim[topo_laco], l_fim);
             topo_laco++; 
             
-            // GERA O 'FOR' LITERAL NO CÓDIGO C (Usando o init guardado no $3 e cond no $6)
+            // GERA O 'FOR' LITERAL NO CÓDIGO C
             sprintf(buf, "for (%s; %s; ", $3, $6.c_expr);
             strcat(c_body, buf);
             
         } incremento_for ')' {
-            // 3. Fecha os parênteses do FOR no C (Usando o incremento guardado no $9)
+            // 3. Fecha os parênteses do FOR no C
             sprintf(buf, "%s) {\n", $9);
             strcat(c_body, buf);
             
@@ -372,10 +387,15 @@ comando : declaracao ';'
             // 4. Chegamos no final do laço!
             topo_laco--; // Desce a pilha de laços
             
+            // --- NOVO PASSO: Imprime o rótulo do INCREMENTO aqui ---
+            // Recuperamos o l_incremento lendo a própria pilha_inicio!
+            sprintf(buf, "%s:\n", pilha_inicio[topo_laco]);
+            strcat(instrucoes, buf);
+            
             // Imprime o incremento do 3AC que estava guardado
             strcat(instrucoes, inc_3ac);
             
-            // Pula de volta pro início no 3AC
+            // Pula de volta pro início (A condicional no $5) no 3AC
             sprintf(buf, "goto %s;\n", $<valor_str>5);
             strcat(instrucoes, buf);
             
@@ -395,6 +415,10 @@ comando : declaracao ';'
             strcpy(switch_exp, $3.temp);
             strcpy(switch_fim, novo_label());
 
+            strcpy(pilha_fim[topo_laco], switch_fim);
+            strcpy(pilha_inicio[topo_laco], "ERRO_CONTINUE_SWITCH");
+            topo_laco++;
+
             // Código C
             sprintf(buf, "switch (%s) {\n", $3.c_expr);
             strcat(c_body, buf);
@@ -403,6 +427,8 @@ comando : declaracao ';'
 
             // Saiu do switch
             dentro_switch--;
+
+            topo_laco--;
 
             // Label de saída do switch no código intermediário
             sprintf(buf, "%s:\n", switch_fim);
@@ -462,12 +488,12 @@ declaracao : TOKEN_INT   ID {
              }
            | TOKEN_BOOL ID {
                  inserir($2, T_BOOL, escopo_atual);
-                 sprintf(buf, "bool %s;\n", $2);
+                 sprintf(buf, "int %s;\n", $2);
                  strcat(c_decl, buf);
              }
             | TOKEN_STRING ID {
                 inserir($2, T_STRING, escopo_atual);
-                sprintf(buf, "char* %s;\n", $2);
+                sprintf(buf, "char %s[256];\n", $2);
                 strcat(c_decl, buf);
              }
            ;
@@ -505,10 +531,25 @@ atribuicao : ID ASSIGN expressao {
         }
 
         if (sem_erro) {
-            sprintf(buf, "%s = %s;\n", s->temp, valor_final);
+            if (s->tipo == T_STRING) {
+                int id_temp;
+
+                sscanf(s->temp, "T%d", &id_temp); 
+
+                tamanhos_t[id_temp] = $3.tam_str;
+
+                sprintf(buf, "strcpy(%s, %s);\n", s->temp, valor_final);
+            } else {
+                sprintf(buf, "%s = %s;\n", s->temp, valor_final);
+            }
             strcat(instrucoes, buf);
 
-            sprintf(buf, "%s = %s;\n", s->nome, c_expr_final);
+            // Código C original
+            if (s->tipo == T_STRING) {
+                sprintf(buf, "strcpy(%s, %s);\n", s->nome, c_expr_final);
+            } else {
+                sprintf(buf, "%s = %s;\n", s->nome, c_expr_final);
+            }
             strcat(c_body, buf);
         }
     }
@@ -542,9 +583,11 @@ expressao : NUM_INT {
             }
             | STRING_LIT {
                 $$.tipo_val = T_STRING;
-                $$.temp   = novo_temp(T_STRING);
+                int tamanho_calculado = strlen($1) - 1; 
+                $$.tam_str = tamanho_calculado;
+                $$.temp = novo_temp_str(tamanho_calculado);
                 $$.c_expr = strdup($1);
-                sprintf(buf, "%s = %s;\n", $$.temp, $1);
+                sprintf(buf, "strcpy(%s, %s);\n", $$.temp, $1);
                 strcat(instrucoes, buf);
             }
           | ID {
@@ -553,57 +596,90 @@ expressao : NUM_INT {
                     $$.tipo_val = s->tipo;
                     $$.temp   = s->temp;
                     $$.c_expr = strdup(s->nome);
+
+                    if (s->tipo == T_STRING) {
+                        int id_temp;
+                        sscanf(s->temp, "T%d", &id_temp);
+                        $$.tam_str = tamanhos_t[id_temp]; 
+                    } else {
+                        $$.tam_str = 0;
+                    }
+                    
                 } else {
                     yyerror("Var nao declarada");
                     $$.temp   = "ERRO";
                     $$.c_expr = strdup("ERRO");
                     $$.tipo_val = T_INT;
+                    $$.tam_str = 0;
                 }
             }
 
           /* --- ARITMÉTICA --- */
           | expressao PLUS expressao {
-                    if (($1.tipo_val != T_INT && $1.tipo_val != T_FLOAT) ||
-                        ($3.tipo_val != T_INT && $3.tipo_val != T_FLOAT)) {
-                        yyerror("Erro Semantico: Operacao de soma com tipos invalidos.");
-                        $$.temp = "ERRO"; $$.c_expr = strdup("ERRO"); $$.tipo_val = T_INT;
-                    } else {
-                        char *ce1 = $1.c_expr;
-                        char *ce3 = $3.c_expr;
-                        
-                        // 1. Determina o tipo resultante
-                        if ($1.tipo_val == T_FLOAT || $3.tipo_val == T_FLOAT) {
-                            $$.tipo_val = T_FLOAT;
-                        } else {
-                            $$.tipo_val = T_INT;
-                        }
+                // 1. Caso: String (String + String)
+                if ($1.tipo_val == T_STRING && $3.tipo_val == T_STRING) {
+                    $$.tipo_val = T_STRING;
 
-                        // 2. Aplica cast se necessário para o código C
-                        if ($$.tipo_val == T_FLOAT) {
-                            if ($1.tipo_val == T_INT) {
-                                $1.temp = gerar_cast($1.temp, T_FLOAT);
-                                char *tmp = (char*) malloc(256);
-                                sprintf(tmp, "(float)(%s)", ce1);
-                                ce1 = tmp;
-                            }
-                            if ($3.tipo_val == T_INT) {
-                                $3.temp = gerar_cast($3.temp, T_FLOAT);
-                                char *tmp = (char*) malloc(256);
-                                sprintf(tmp, "(float)(%s)", ce3);
-                                ce3 = tmp;
-                            }
-                        }
+                    int tamanho_soma = $1.tam_str + $3.tam_str - 1;
+                    $$.tam_str = tamanho_soma;
 
-                        // 3. Gera UMA ÚNICA vez o código
-                        $$.temp = novo_temp($$.tipo_val);
-                        sprintf(buf, "%s = %s + %s;\n", $$.temp, $1.temp, $3.temp);
-                        strcat(instrucoes, buf);
+                    $$.temp = novo_temp_str(tamanho_soma);
 
-                        char *ce = (char*) malloc(256);
-                        sprintf(ce, "(%s + %s)", ce1, ce3);
-                        $$.c_expr = ce;
-                    }
+                    sprintf(buf, "strcpy(%s, %s);\n"
+                                 "strcat(%s, %s);\n", 
+                                 $$.temp, $1.temp, 
+                                 $$.temp, $3.temp);
+                    strcat(instrucoes, buf);
+                    
+                    char *ce = (char*) malloc(tamanho_soma);
+                    sprintf(ce, "(%s + %s)", $1.c_expr, $3.c_expr);
+                    $$.c_expr = ce;
+
+                    free($1.c_expr);
+                    free($3.c_expr);
                 }
+                // 2. Caso: Numérico (Int ou Float)
+                else if (($1.tipo_val == T_INT || $1.tipo_val == T_FLOAT) && 
+                        ($3.tipo_val == T_INT || $3.tipo_val == T_FLOAT)) {
+                    
+                    char *ce1 = $1.c_expr;
+                    char *ce3 = $3.c_expr;
+
+                    if ($1.tipo_val == T_FLOAT || $3.tipo_val == T_FLOAT) {
+                        $$.tipo_val = T_FLOAT;
+                    } else {
+                        $$.tipo_val = T_INT;
+                    }
+
+                    if ($$.tipo_val == T_FLOAT) {
+                        if ($1.tipo_val == T_INT) {
+                            $1.temp = gerar_cast($1.temp, T_FLOAT);
+                            char *tmp = (char*) malloc(256);
+                            sprintf(tmp, "(float)(%s)", ce1);
+                            ce1 = tmp;
+                        }
+                        if ($3.tipo_val == T_INT) {
+                            $3.temp = gerar_cast($3.temp, T_FLOAT);
+                            char *tmp = (char*) malloc(256);
+                            sprintf(tmp, "(float)(%s)", ce3);
+                            ce3 = tmp;
+                        }
+                    }
+
+                    $$.temp = novo_temp($$.tipo_val);
+                    sprintf(buf, "%s = %s + %s;\n", $$.temp, $1.temp, $3.temp);
+                    strcat(instrucoes, buf);
+
+                    char *ce = (char*) malloc(256);
+                    sprintf(ce, "(%s + %s)", ce1, ce3);
+                    $$.c_expr = ce;
+                }
+                // 3. Caso: Tipos incompatíveis (Erro Semântico)
+                else {
+                    yyerror("Erro Semantico: Operacao de soma com tipos invalidos.");
+                    $$.temp = "ERRO"; $$.c_expr = strdup("ERRO"); $$.tipo_val = T_INT;
+                }
+            }
           | expressao '-' expressao {
                 if (($1.tipo_val != T_INT && $1.tipo_val != T_FLOAT) ||
                     ($3.tipo_val != T_INT && $3.tipo_val != T_FLOAT)) {
@@ -900,6 +976,8 @@ int main() {
         return 1;
     }
 
+    gerar_declaracoes_finais();
+
     /* 1. VISUALIZAÇÃO DO CÓDIGO INTERMEDIÁRIO (Terminal) */
     printf("#include <stdio.h>\n");
     printf("#include <stdlib.h>\n");
@@ -933,10 +1011,8 @@ int main() {
     fclose(arquivo_c);
 
     int status_gcc = system("gcc saida.c -o programa.exe");
-    if (status_gcc == 0) {
-        printf("Finalizado com sucesso\n");
-    } else {
-        printf("Erro na compilacao.\n");
+    if (status_gcc != 0) {
+        printf("Erro no compilador\n");
     }
 
     return 0;

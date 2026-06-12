@@ -1,15 +1,5 @@
-main() {
-    int a;
-    int i;
-
-    a = 1;
-    for (i = 1; i <= 10; i = i + 1){
-        print(i);
-        int a;
-        a = 2;
-    }
-
-    a = 3;
-}
-
+main (){
+    string a;
     
+    read(a);
+}

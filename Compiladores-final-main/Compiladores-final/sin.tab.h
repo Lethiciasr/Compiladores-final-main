@@ -97,16 +97,17 @@ extern int yydebug;
 #if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
 union YYSTYPE
 {
-#line 30 "sin.y"
+#line 31 "sin.y"
 
     char* valor_str;
     struct {
         char* temp;
         char* c_expr;
         int tipo_val;
+        int tam_str;
     } info;
 
-#line 110 "sin.tab.h"
+#line 111 "sin.tab.h"
 
 };
 typedef union YYSTYPE YYSTYPE;

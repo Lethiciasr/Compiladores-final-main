@@ -29,5 +29,9 @@ extern char c_code_body[5000];
 
 extern int l_cont;
 char* novo_label();
+char* novo_temp_str(int tamanho_exato);
+
+extern int tamanhos_t[1000]; 
+void gerar_declaracoes_finais();
 
 #endif
