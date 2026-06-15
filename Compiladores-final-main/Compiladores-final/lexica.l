@@ -38,6 +38,12 @@
 "<"         { return '<'; }
 ">"         { return '>'; }
 "=="        { return EQ; }
+"+="        { return PLUS_ASSIGN; }
+"-="        { return MINUS_ASSIGN; }
+"*="        { return MULT_ASSIGN; }
+"/="        { return DIV_ASSIGN; }
+"++"        { return INC; }
+"--"        { return DEC; }
 
 [0-9]+      { 
                 yylval.valor_str = strdup(yytext); 
@@ -63,7 +69,7 @@
 "*"         { return '*'; }
 "/"         { return '/'; }
 
-[ \t\n]+    { /* Ignora espaços, tabs e quebras de linha */ }
+[ \t\r\n]+    { /* Ignora espaços, tabs e quebras de linha */ }
 
 .           { return yytext[0]; }
 

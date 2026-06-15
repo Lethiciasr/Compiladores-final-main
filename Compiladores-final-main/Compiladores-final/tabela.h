@@ -9,12 +9,15 @@ typedef struct Simbolo {
     char temp[10]; //codigo intermediario
     Tipo tipo;
     int nivel;
+    int array;
+    int tamanho_array;
     struct Simbolo *proximo;
 } Simbolo;
 
 // Funções de gerenciamento da tabela e variáveis temporárias
 char* novo_temp(Tipo tipo); // gerar um novo nome de variavel temporaria
 Simbolo* inserir(char *nome, Tipo tipo, int nivel); //add uma nova variavel na tabela quando declarada
+Simbolo* inserir_array(char *nome, Tipo tipo, int nivel, int tamanho);
 Simbolo* buscar(char *nome); // vê se a variavel ja foi declarada
 void remover_simbolos_do_nivel(int nivel);
 
@@ -30,6 +33,7 @@ extern char c_code_body[5000];
 extern int l_cont;
 char* novo_label();
 char* novo_temp_str(int tamanho_exato);
+char* novo_temp_array(Tipo tipo, int tamanho);
 
 extern int tamanhos_t[1000]; 
 void gerar_declaracoes_finais();

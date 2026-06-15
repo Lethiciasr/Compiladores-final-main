@@ -46,6 +46,10 @@ int escopo_atual = 0;
 %token TOKEN_SWITCH TOKEN_CASE TOKEN_DEFAULT TOKEN_BREAK
 %token TOKEN_CONTINUE
 %token AND OR EQ NE LE GE NOT
+%token PLUS_ASSIGN MINUS_ASSIGN MULT_ASSIGN DIV_ASSIGN
+%token INC DEC
+
+%define parse.error verbose
 
 %left OR
 %left AND
@@ -132,12 +136,32 @@ incremento_for : ID ASSIGN expressao {
     if (!s) {
         yyerror("Erro: Variavel nao declarada no incremento do for.");
     } else {
-        // Guarda o 3AC na variavel temporaria
         sprintf(inc_3ac, "%s = %s;\n", s->temp, $3.temp);
-        
-        // Em vez de imprimir no C, retorna a string formatada
         char* inc_str = (char*) malloc(256);
         sprintf(inc_str, "%s = %s", s->nome, $3.c_expr);
+        $$ = inc_str;
+    }
+}
+| ID INC {
+    Simbolo *s = buscar($1);
+    if (!s) {
+        yyerror("Erro: Variavel nao declarada no incremento do for.");
+    } else {
+        // Gera o 3AC somando 1
+        sprintf(inc_3ac, "%s = %s + 1;\n", s->temp, s->temp);
+        char* inc_str = (char*) malloc(256);
+        sprintf(inc_str, "%s++", s->nome);
+        $$ = inc_str;
+    }
+}
+| ID DEC {
+    Simbolo *s = buscar($1);
+    if (!s) {
+        yyerror("Erro: Variavel nao declarada no decremento do for.");
+    } else {
+        sprintf(inc_3ac, "%s = %s - 1;\n", s->temp, s->temp);
+        char* inc_str = (char*) malloc(256);
+        sprintf(inc_str, "%s--", s->nome);
         $$ = inc_str;
     }
 }
@@ -470,31 +494,296 @@ comando : declaracao ';'
                 strcat(c_body, "continue;\n");
             }
         }
+        | ID PLUS_ASSIGN expressao ';' {
+                Simbolo *s = buscar($1);
+                if (!s) yyerror("Erro: Variavel nao declarada.");
+                else if (s->tipo != $3.tipo_val) yyerror("Erro Semantico: Tipos incompativeis.");
+                else {
+                    // TAC: temp = x + expr
+                    char* t_op = novo_temp(s->tipo);
+                    sprintf(buf, "%s = %s + %s;\n", t_op, s->temp, $3.temp);
+                    strcat(instrucoes, buf);
+                    // Atribuição: x = temp
+                    sprintf(buf, "%s = %s;\n", s->temp, t_op);
+                    strcat(instrucoes, buf);
+                    // C
+                    sprintf(buf, "%s += %s;\n", s->nome, $3.c_expr);
+                    strcat(c_body, buf);
+                }
+            }
+            | ID MINUS_ASSIGN expressao ';' {
+                Simbolo *s = buscar($1);
+                if (!s) yyerror("Erro: Variavel nao declarada.");
+                else if (s->tipo != $3.tipo_val) yyerror("Erro Semantico: Tipos incompativeis.");
+                else {
+                    char* t_op = novo_temp(s->tipo);
+                    sprintf(buf, "%s = %s - %s;\n", t_op, s->temp, $3.temp);
+                    strcat(instrucoes, buf);
+                    sprintf(buf, "%s = %s;\n", s->temp, t_op);
+                    strcat(instrucoes, buf);
+                    sprintf(buf, "%s -= %s;\n", s->nome, $3.c_expr);
+                    strcat(c_body, buf);
+                }
+            }
+            | ID MULT_ASSIGN expressao ';' {
+            Simbolo *s = buscar($1);
+            if (!s) yyerror("Erro: Variavel nao declarada.");
+            else if (s->tipo != $3.tipo_val) yyerror("Erro Semantico: Tipos incompativeis.");
+            else {
+                char* t_op = novo_temp(s->tipo);
+                sprintf(buf, "%s = %s * %s;\n", t_op, s->temp, $3.temp);
+                strcat(instrucoes, buf);
+                sprintf(buf, "%s = %s;\n", s->temp, t_op);
+                strcat(instrucoes, buf);
+                sprintf(buf, "%s *= %s;\n", s->nome, $3.c_expr);
+                strcat(c_body, buf);
+            }
+        }
+        | ID DIV_ASSIGN expressao ';' {
+            Simbolo *s = buscar($1);
+            if (!s) yyerror("Erro: Variavel nao declarada.");
+            else if (s->tipo != $3.tipo_val) yyerror("Erro Semantico: Tipos incompativeis.");
+            else {
+                char* t_op = novo_temp(s->tipo);
+                sprintf(buf, "%s = %s / %s;\n", t_op, s->temp, $3.temp);
+                strcat(instrucoes, buf);
+                sprintf(buf, "%s = %s;\n", s->temp, t_op);
+                strcat(instrucoes, buf);
+                sprintf(buf, "%s /= %s;\n", s->nome, $3.c_expr);
+                strcat(c_body, buf);
+            }
+        }
+        | ID INC ';' {
+            Simbolo *s = buscar($1);
+            if (!s) yyerror("Erro: Variavel nao declarada para incremento.");
+            else {
+                // Atualiza o valor no TAC (x = x + 1)
+                sprintf(buf, "%s = %s + 1;\n", s->temp, s->temp);
+                strcat(instrucoes, buf);
+                
+                // Transpila para C
+                sprintf(buf, "%s++;\n", s->nome);
+                strcat(c_body, buf);
+            }
+        }
+        | ID DEC ';' {
+            Simbolo *s = buscar($1);
+            if (!s) yyerror("Erro: Variavel nao declarada para decremento.");
+            else {
+                // Atualiza o valor no TAC (x = x - 1)
+                sprintf(buf, "%s = %s - 1;\n", s->temp, s->temp);
+                strcat(instrucoes, buf);
+                
+                // Transpila para C
+                sprintf(buf, "%s--;\n", s->nome);
+                strcat(c_body, buf);
+            }
+        }
+        | ID '[' expressao ']' ASSIGN expressao ';' {
+            Simbolo *s = buscar($1);
+            if (!s) yyerror("Erro: Matriz nao declarada.");
+            else if (!s->array) yyerror("Erro: Variavel nao e uma matriz.");
+            else if ($3.tipo_val != T_INT) yyerror("Erro Semantico: Indice da matriz deve ser inteiro.");
+            // Regra simplificada de tipo (pode ser expandida com casts se desejar)
+            else if (s->tipo != $6.tipo_val) yyerror("Erro Semantico: Atribuicao com tipo incompativel na matriz.");
+            else {
+                // TAC: vetor[T_indice] = T_valor
+                sprintf(buf, "%s[%s] = %s;\n", s->temp, $3.temp, $6.temp);
+                strcat(instrucoes, buf);
+                
+                // Codigo C
+                sprintf(buf, "%s[%s] = %s;\n", s->temp, $3.c_expr, $6.c_expr);
+                strcat(c_body, buf);
+            }
+        }
+        | ID '[' expressao ']' ASSIGN expressao ';' {
+            Simbolo *s = buscar($1);
+            if (!s) yyerror("Erro: Matriz nao declarada.");
+            else if (!s->array) yyerror("Erro: Variavel nao e uma matriz.");
+            else if ($3.tipo_val != T_INT) yyerror("Erro Semantico: Indice da matriz deve ser inteiro.");
+            else {
+                char* valor_final  = $6.temp;
+                char* c_expr_final = $6.c_expr;
+                int sem_erro = 1;
 
-declaracao : TOKEN_INT   ID {
+                if (s->tipo == T_FLOAT && $6.tipo_val == T_INT) {
+                    valor_final = gerar_cast($6.temp, T_FLOAT);
+                    char *tmp = (char*) malloc(256);
+                    sprintf(tmp, "(float)(%s)", c_expr_final);
+                    c_expr_final = tmp;
+                } else if (s->tipo == T_INT && $6.tipo_val == T_FLOAT) {
+                    valor_final = gerar_cast($6.temp, T_INT);
+                    char *tmp = (char*) malloc(256);
+                    sprintf(tmp, "(int)(%s)", c_expr_final);
+                    c_expr_final = tmp;
+                } else if (s->tipo != $6.tipo_val) {
+                    yyerror("Erro Semantico: Atribuicao com tipo incompativel na matriz.");
+                    sem_erro = 0;
+                }
+
+                if (sem_erro) {
+                    sprintf(buf, "%s[%s] = %s;\n", s->nome, $3.temp, valor_final);
+                    strcat(instrucoes, buf);
+                    sprintf(buf, "%s[%s] = %s;\n", s->nome, $3.c_expr, c_expr_final);
+                    strcat(c_body, buf);
+                }
+            }
+        }
+
+declaracao : TOKEN_INT ID {
+                // DECLARAÇÃO SIMPLES (Já existia)
                 inserir($2, T_INT, escopo_atual);
                 sprintf(buf, "int %s;\n", $2);
                 strcat(c_decl, buf);
              }
-           | TOKEN_FLOAT ID {
+           | TOKEN_INT ID ASSIGN expressao {
+                // DECLARAÇÃO COM INICIALIZAÇÃO (Novo)
+                inserir($2, T_INT, escopo_atual);
+                sprintf(buf, "int %s;\n", $2);
+                strcat(c_decl, buf);
+
+                Simbolo *s = buscar($2);
+                char* valor_final = $4.temp;
+                char* c_expr_final = $4.c_expr;
+
+                // Verificação de tipo (Cast de float para int)
+                if ($4.tipo_val == T_FLOAT) {
+                    valor_final = gerar_cast($4.temp, T_INT);
+                    char *tmp = (char*) malloc(256);
+                    strcpy(tmp, "(int)(");
+                    strcat(tmp, c_expr_final);
+                    strcat(tmp, ")");
+                    c_expr_final = tmp;
+                } else if ($4.tipo_val != T_INT) {
+                    yyerror("Erro Semantico: Inicializacao de 'int' com tipo incompativel.");
+                }
+
+                // Gera o TAC e o código C da atribuição
+                sprintf(buf, "%s = %s;\n", s->temp, valor_final);
+                strcat(instrucoes, buf);
+                
+                sprintf(buf, "%s = %s;\n", s->nome, c_expr_final);
+                strcat(c_body, buf);
+             }
+             | 
+             | TOKEN_INT ID '[' NUM_INT ']' {
+                int tamanho = atoi($4);
+                inserir_array($2, T_INT, escopo_atual, tamanho);
+             }
+           |
+           TOKEN_FLOAT ID {
+                // DECLARAÇÃO SIMPLES
                 inserir($2, T_FLOAT, escopo_atual);
                 sprintf(buf, "float %s;\n", $2);
                 strcat(c_decl, buf);
              }
-           | TOKEN_CHAR  ID {
+           | TOKEN_FLOAT ID ASSIGN expressao {
+                // DECLARAÇÃO COM INICIALIZAÇÃO
+                inserir($2, T_FLOAT, escopo_atual);
+                sprintf(buf, "float %s;\n", $2);
+                strcat(c_decl, buf);
+
+                Simbolo *s = buscar($2);
+                char* valor_final = $4.temp;
+                char* c_expr_final = $4.c_expr;
+
+                // Verificação de tipo (Cast de int para float)
+                if ($4.tipo_val == T_INT) {
+                    valor_final = gerar_cast($4.temp, T_FLOAT);
+                    char *tmp = (char*) malloc(256);
+                    strcpy(tmp, "(float)(");
+                    strcat(tmp, c_expr_final);
+                    strcat(tmp, ")");
+                    c_expr_final = tmp;
+                } else if ($4.tipo_val != T_FLOAT) {
+                    yyerror("Erro Semantico: Inicializacao de 'float' com tipo incompativel.");
+                }
+
+                sprintf(buf, "%s = %s;\n", s->temp, valor_final);
+                strcat(instrucoes, buf);
+                
+                sprintf(buf, "%s = %s;\n", s->nome, c_expr_final);
+                strcat(c_body, buf);
+             }
+             | 
+             | TOKEN_FLOAT ID '[' NUM_INT ']' {
+                int tamanho = atoi($4);
+                inserir_array($2, T_FLOAT, escopo_atual, tamanho);
+             }
+             |
+           TOKEN_CHAR ID {
                 inserir($2, T_CHAR, escopo_atual);
                 sprintf(buf, "char %s;\n", $2);
                 strcat(c_decl, buf);
              }
-           | TOKEN_BOOL ID {
+           | TOKEN_CHAR ID ASSIGN expressao {
+                inserir($2, T_CHAR, escopo_atual);
+                sprintf(buf, "char %s;\n", $2);
+                strcat(c_decl, buf);
+
+                Simbolo *s = buscar($2);
+                if ($4.tipo_val != T_CHAR) {
+                    yyerror("Erro Semantico: Inicializacao de 'char' com tipo incompativel.");
+                } else {
+                    // TAC
+                    sprintf(buf, "%s = %s;\n", s->temp, $4.temp);
+                    strcat(instrucoes, buf);
+                    // C
+                    sprintf(buf, "%s = %s;\n", s->nome, $4.c_expr);
+                    strcat(c_body, buf);
+                }
+             }
+           |
+           TOKEN_BOOL ID {
                  inserir($2, T_BOOL, escopo_atual);
                  sprintf(buf, "int %s;\n", $2);
                  strcat(c_decl, buf);
              }
-            | TOKEN_STRING ID {
+           | TOKEN_BOOL ID ASSIGN expressao {
+                 inserir($2, T_BOOL, escopo_atual);
+                 sprintf(buf, "int %s;\n", $2);
+                 strcat(c_decl, buf);
+
+                 Simbolo *s = buscar($2);
+                 if ($4.tipo_val != T_BOOL) {
+                     yyerror("Erro Semantico: Inicializacao de 'boolean' com tipo incompativel.");
+                 } else {
+                     // TAC
+                     sprintf(buf, "%s = %s;\n", s->temp, $4.temp);
+                     strcat(instrucoes, buf);
+                     // C
+                     sprintf(buf, "%s = %s;\n", s->nome, $4.c_expr);
+                     strcat(c_body, buf);
+                 }
+             }
+            |
+           TOKEN_STRING ID {
                 inserir($2, T_STRING, escopo_atual);
                 sprintf(buf, "char %s[256];\n", $2);
                 strcat(c_decl, buf);
+             }
+           | TOKEN_STRING ID ASSIGN expressao {
+                inserir($2, T_STRING, escopo_atual);
+                sprintf(buf, "char %s[256];\n", $2);
+                strcat(c_decl, buf);
+
+                Simbolo *s = buscar($2);
+                if ($4.tipo_val != T_STRING) {
+                    yyerror("Erro Semantico: Inicializacao de 'string' com tipo incompativel.");
+                } else {
+                    // Atualiza o tamanho no array de temporarios
+                    int id_temp;
+                    sscanf(s->temp, "T%d", &id_temp);
+                    tamanhos_t[id_temp] = $4.tam_str;
+
+                    // TAC usando strcpy
+                    sprintf(buf, "strcpy(%s, %s);\n", s->temp, $4.temp);
+                    strcat(instrucoes, buf);
+                    
+                    // C usando strcpy
+                    sprintf(buf, "strcpy(%s, %s);\n", s->nome, $4.c_expr);
+                    strcat(c_body, buf);
+                }
              }
            ;
 
@@ -715,31 +1004,29 @@ expressao : NUM_INT {
                     $$.temp = "ERRO"; $$.c_expr = strdup("ERRO"); $$.tipo_val = T_INT;
                 } else {
                     char *ce1 = $1.c_expr, *ce3 = $3.c_expr;
-                    if ($1.tipo_val == T_INT) {
-                        $1.temp = gerar_cast($1.temp, T_FLOAT);
-                        $1.tipo_val = T_FLOAT;
-
-                        char *tmp = (char*) malloc(256);
-                        sprintf(tmp, "(float)(%s)", ce1);
-                        ce1 = tmp;
-                    } else {
-                        $3.temp = gerar_cast($3.temp, T_FLOAT);
-                        $3.tipo_val = T_FLOAT;
-
-                        char *tmp = (char*) malloc(256);
-                        sprintf(tmp, "(float)(%s)", ce3);
-                        ce3 = tmp;
-                    }
+                    // Só converte se os tipos forem DIFERENTES
+                    if ($1.tipo_val != $3.tipo_val) {
+                        if ($1.tipo_val == T_INT) {
+                            $1.temp = gerar_cast($1.temp, T_FLOAT);
+                            $1.tipo_val = T_FLOAT;
+                            char *tmp = (char*) malloc(256);
+                            sprintf(tmp, "(float)(%s)", ce1); ce1 = tmp;
+                        } else {
+                            $3.temp = gerar_cast($3.temp, T_FLOAT);
+                            $3.tipo_val = T_FLOAT;
+                            char *tmp = (char*) malloc(256);
+                            sprintf(tmp, "(float)(%s)", ce3); ce3 = tmp;
+                        }
                     }
                     $$.tipo_val = ($1.tipo_val == T_FLOAT || $3.tipo_val == T_FLOAT) ? T_FLOAT : T_INT;
                     $$.temp = novo_temp($$.tipo_val);
                     sprintf(buf, "%s = %s * %s;\n", $$.temp, $1.temp, $3.temp);
                     strcat(instrucoes, buf);
-
                     char *ce = (char*) malloc(256);
-                    sprintf(ce, "(%s + %s)", $1.c_expr, $3.c_expr);
+                    sprintf(ce, "(%s * %s)", ce1, ce3);
                     $$.c_expr = ce;
                 }
+            }
           | expressao '/' expressao {
                 if (($1.tipo_val != T_INT && $1.tipo_val != T_FLOAT) ||
                     ($3.tipo_val != T_INT && $3.tipo_val != T_FLOAT)) {
@@ -747,31 +1034,35 @@ expressao : NUM_INT {
                     $$.temp = "ERRO"; $$.c_expr = strdup("ERRO"); $$.tipo_val = T_INT;
                 } else {
                     char *ce1 = $1.c_expr, *ce3 = $3.c_expr;
-                   if ($1.tipo_val == T_INT) {
-                        $1.temp = gerar_cast($1.temp, T_FLOAT);
-                        $1.tipo_val = T_FLOAT;
-
-                        char *tmp = (char*) malloc(256);
-                        sprintf(tmp, "(float)(%s)", ce1);
-                        ce1 = tmp;
-                    } else {
-                        $3.temp = gerar_cast($3.temp, T_FLOAT);
-                        $3.tipo_val = T_FLOAT;
-
-                        char *tmp = (char*) malloc(256);
-                        sprintf(tmp, "(float)(%s)", ce3);
-                        ce3 = tmp;
+                    
+                    // Só converte se os tipos forem DIFERENTES
+                    if ($1.tipo_val != $3.tipo_val) {
+                        if ($1.tipo_val == T_INT) {
+                            $1.temp = gerar_cast($1.temp, T_FLOAT);
+                            $1.tipo_val = T_FLOAT;
+                            char *tmp = (char*) malloc(256);
+                            sprintf(tmp, "(float)(%s)", ce1); ce1 = tmp;
+                        } else {
+                            $3.temp = gerar_cast($3.temp, T_FLOAT);
+                            $3.tipo_val = T_FLOAT;
+                            char *tmp = (char*) malloc(256);
+                            sprintf(tmp, "(float)(%s)", ce3); ce3 = tmp;
+                        }
                     }
-                    }
+                    
                     $$.tipo_val = ($1.tipo_val == T_FLOAT || $3.tipo_val == T_FLOAT) ? T_FLOAT : T_INT;
                     $$.temp = novo_temp($$.tipo_val);
+                    
+                    // TAC
                     sprintf(buf, "%s = %s / %s;\n", $$.temp, $1.temp, $3.temp);
                     strcat(instrucoes, buf);
-
+                    
+                    // Código C (Corrigido de '+' para '/')
                     char *ce = (char*) malloc(256);
-                    sprintf(ce, "(%s + %s)", $1.c_expr, $3.c_expr);
+                    sprintf(ce, "(%s / %s)", ce1, ce3);
                     $$.c_expr = ce;
                 }
+            }
 
           /* --- RELACIONAIS (C/ Checagem de Tipo) --- */
           | expressao EQ expressao {
@@ -963,6 +1254,32 @@ expressao : NUM_INT {
                 strcat(ce, ")");
 
                 $$.c_expr = ce;
+            }
+            /* --- LEITURA DE MATRIZ --- */
+          | ID '[' expressao ']' {
+                Simbolo *s = buscar($1);
+                if (!s) {
+                    yyerror("Erro: Matriz nao declarada.");
+                    $$.tipo_val = T_INT; $$.temp = "ERRO"; $$.c_expr = strdup("ERRO");
+                } else if (!s->array) {
+                    yyerror("Erro: Variavel nao e uma matriz.");
+                    $$.tipo_val = T_INT; $$.temp = "ERRO"; $$.c_expr = strdup("ERRO");
+                } else if ($3.tipo_val != T_INT) {
+                    yyerror("Erro Semantico: Indice da matriz deve ser inteiro.");
+                    $$.tipo_val = T_INT; $$.temp = "ERRO"; $$.c_expr = strdup("ERRO");
+                } else {
+                    $$.tipo_val = s->tipo;
+                    $$.temp = novo_temp(s->tipo);
+                    
+                    // TAC: T_novo = vetor[T_indice]
+                    sprintf(buf, "%s = %s[%s];\n", $$.temp, s->temp, $3.temp);
+                    strcat(instrucoes, buf);
+                    
+                    // Codigo C
+                    char *ce = (char*) malloc(256);
+                    sprintf(ce, "%s[%s]", s->temp, $3.c_expr);
+                    $$.c_expr = ce;
+                }
             }
           ;
 

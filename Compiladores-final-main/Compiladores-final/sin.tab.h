@@ -87,8 +87,14 @@ extern int yydebug;
     LE = 288,                      /* LE  */
     GE = 289,                      /* GE  */
     NOT = 290,                     /* NOT  */
-    CAST = 291,                    /* CAST  */
-    UMINUS = 292                   /* UMINUS  */
+    PLUS_ASSIGN = 291,             /* PLUS_ASSIGN  */
+    MINUS_ASSIGN = 292,            /* MINUS_ASSIGN  */
+    MULT_ASSIGN = 293,             /* MULT_ASSIGN  */
+    DIV_ASSIGN = 294,              /* DIV_ASSIGN  */
+    INC = 295,                     /* INC  */
+    DEC = 296,                     /* DEC  */
+    CAST = 297,                    /* CAST  */
+    UMINUS = 298                   /* UMINUS  */
   };
   typedef enum yytokentype yytoken_kind_t;
 #endif
@@ -107,7 +113,7 @@ union YYSTYPE
         int tam_str;
     } info;
 
-#line 111 "sin.tab.h"
+#line 117 "sin.tab.h"
 
 };
 typedef union YYSTYPE YYSTYPE;

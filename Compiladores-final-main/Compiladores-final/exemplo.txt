@@ -1,5 +1,20 @@
-main (){
-    string a;
-    
-    read(a);
+main() {
+    int itens_bau[5];
+    int i;
+    int total = 0;
+    int pack = 64;
+
+    for (i = 0; i < 5; i++) {
+        itens_bau[i] = i * pack; 
+    }
+
+    for (i = 0; i < 5; i++) {
+        print(itens_bau[i]); 
+        total += itens_bau[i];
+    }
+
+    int bau_tres = itens_bau[3];
+
+    print(bau_tres); 
+    print(total);   
 }

@@ -46,16 +46,36 @@ char* novo_temp_str(int tamanho_exato) {
     return t;
 }
 
-// NOVA FUNÇÃO: Imprime todas as variáveis de uma vez só!
+char* novo_temp_array(Tipo tipo, int tamanho) {
+    char* t = (char*) malloc(10);
+    sprintf(t, "T%d", t_cont);
+    
+    tipos_t[t_cont] = tipo;
+    tamanhos_t[t_cont] = tamanho; // Registra o tamanho exato da matriz
+    
+    t_cont++;
+    return t;
+}
+
 void gerar_declaracoes_finais() {
     for (int i = 1; i < t_cont; i++) {
         char linha[100];
-        switch(tipos_t[i]) {
-            case T_INT:   sprintf(linha, "int T%d;\n", i); break;
-            case T_FLOAT: sprintf(linha, "float T%d;\n", i); break;
-            case T_CHAR:  sprintf(linha, "char T%d;\n", i); break;
-            case T_BOOL:  sprintf(linha, "int T%d;\n", i); break;
-            case T_STRING: sprintf(linha, "char T%d[%d];\n", i, tamanhos_t[i]); break;
+        
+        // Se o tamanho for maior que zero e não for string, é uma matriz!
+        if (tamanhos_t[i] > 0 && tipos_t[i] != T_STRING) {
+            switch(tipos_t[i]) {
+                case T_INT:   sprintf(linha, "int T%d[%d];\n", i, tamanhos_t[i]); break;
+                case T_FLOAT: sprintf(linha, "float T%d[%d];\n", i, tamanhos_t[i]); break;
+            }
+        } else {
+            // Variável comum ou string
+            switch(tipos_t[i]) {
+                case T_INT:   sprintf(linha, "int T%d;\n", i); break;
+                case T_FLOAT: sprintf(linha, "float T%d;\n", i); break;
+                case T_CHAR:  sprintf(linha, "char T%d;\n", i); break;
+                case T_BOOL:  sprintf(linha, "int T%d;\n", i); break;
+                case T_STRING: sprintf(linha, "char T%d[%d];\n", i, tamanhos_t[i]); break;
+            }
         }
         strcat(declaracoes, linha); 
         strcat(c_code_decl, linha); 
@@ -81,6 +101,31 @@ Simbolo* inserir(char *nome, Tipo tipo, int nivel) {
     novo->tipo = tipo;
     novo->nivel = nivel;
     novo->proximo = tabela_global;
+    novo->array = 0;
+    novo->tamanho_array = 0;
+    tabela_global = novo;
+    return novo;
+}
+
+Simbolo* inserir_array(char *nome, Tipo tipo, int nivel, int tamanho) {
+    if (buscar(nome) != NULL) {
+        printf("Erro Semantico: Variavel '%s' ja declarada neste escopo.\n", nome);
+        return NULL;
+    }
+
+    Simbolo *novo = (Simbolo*) malloc(sizeof(Simbolo));
+    strcpy(novo->nome, nome);
+
+    char *nome_t = novo_temp_array(tipo, tamanho); 
+    strcpy(novo->temp, nome_t); 
+    free(nome_t); 
+    
+    novo->tipo = tipo;
+    novo->nivel = nivel;
+    novo->proximo = tabela_global;
+    novo->array = 1;
+    novo->tamanho_array = tamanho;
+    
     tabela_global = novo;
     return novo;
 }
