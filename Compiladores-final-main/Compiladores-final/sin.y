@@ -25,6 +25,10 @@ char pilha_inicio[20][50];
 char pilha_fim[20][50];
 int topo_laco = 0;
 
+Simbolo *simbolo_array_atual = NULL;
+int idx_array_atual = 0;
+int tam_array_atual = 0;
+
 int escopo_atual = 0;
 %}
 
@@ -584,23 +588,6 @@ comando : declaracao ';'
             if (!s) yyerror("Erro: Matriz nao declarada.");
             else if (!s->array) yyerror("Erro: Variavel nao e uma matriz.");
             else if ($3.tipo_val != T_INT) yyerror("Erro Semantico: Indice da matriz deve ser inteiro.");
-            // Regra simplificada de tipo (pode ser expandida com casts se desejar)
-            else if (s->tipo != $6.tipo_val) yyerror("Erro Semantico: Atribuicao com tipo incompativel na matriz.");
-            else {
-                // TAC: vetor[T_indice] = T_valor
-                sprintf(buf, "%s[%s] = %s;\n", s->temp, $3.temp, $6.temp);
-                strcat(instrucoes, buf);
-                
-                // Codigo C
-                sprintf(buf, "%s[%s] = %s;\n", s->temp, $3.c_expr, $6.c_expr);
-                strcat(c_body, buf);
-            }
-        }
-        | ID '[' expressao ']' ASSIGN expressao ';' {
-            Simbolo *s = buscar($1);
-            if (!s) yyerror("Erro: Matriz nao declarada.");
-            else if (!s->array) yyerror("Erro: Variavel nao e uma matriz.");
-            else if ($3.tipo_val != T_INT) yyerror("Erro Semantico: Indice da matriz deve ser inteiro.");
             else {
                 char* valor_final  = $6.temp;
                 char* c_expr_final = $6.c_expr;
@@ -622,9 +609,9 @@ comando : declaracao ';'
                 }
 
                 if (sem_erro) {
-                    sprintf(buf, "%s[%s] = %s;\n", s->nome, $3.temp, valor_final);
+                    sprintf(buf, "%s[%s] = %s;\n", s->temp, $3.temp, valor_final);
                     strcat(instrucoes, buf);
-                    sprintf(buf, "%s[%s] = %s;\n", s->nome, $3.c_expr, c_expr_final);
+                    sprintf(buf, "%s[%s] = %s;\n", s->temp, $3.c_expr, c_expr_final);
                     strcat(c_body, buf);
                 }
             }
@@ -665,11 +652,19 @@ declaracao : TOKEN_INT ID {
                 sprintf(buf, "%s = %s;\n", s->nome, c_expr_final);
                 strcat(c_body, buf);
              }
-             | 
-             | TOKEN_INT ID '[' NUM_INT ']' {
+             |
+           TOKEN_INT ID '[' NUM_INT ']' ASSIGN '{' {
                 int tamanho = atoi($4);
                 inserir_array($2, T_INT, escopo_atual, tamanho);
-             }
+                
+                // Configura o estado para a regra lista_valores usar
+                simbolo_array_atual = buscar($2);
+                tam_array_atual = tamanho;
+                idx_array_atual = 0;
+           } lista_valores '}' {
+                // Limpa o estado após terminar a inicialização
+                simbolo_array_atual = NULL; 
+           }
            |
            TOKEN_FLOAT ID {
                 // DECLARAÇÃO SIMPLES
@@ -705,11 +700,17 @@ declaracao : TOKEN_INT ID {
                 sprintf(buf, "%s = %s;\n", s->nome, c_expr_final);
                 strcat(c_body, buf);
              }
-             | 
-             | TOKEN_FLOAT ID '[' NUM_INT ']' {
+             |
+           TOKEN_FLOAT ID '[' NUM_INT ']' ASSIGN '{' {
                 int tamanho = atoi($4);
                 inserir_array($2, T_FLOAT, escopo_atual, tamanho);
-             }
+                
+                simbolo_array_atual = buscar($2);
+                tam_array_atual = tamanho;
+                idx_array_atual = 0;
+           } lista_valores '}' {
+                simbolo_array_atual = NULL;
+           }
              |
            TOKEN_CHAR ID {
                 inserir($2, T_CHAR, escopo_atual);
@@ -1282,6 +1283,49 @@ expressao : NUM_INT {
                 }
             }
           ;
+
+          lista_valores : expressao {
+        if (simbolo_array_atual) {
+            if (idx_array_atual < tam_array_atual) {
+                // Checagem estrita de tipo (você pode adicionar casts aqui depois, se quiser)
+                if (simbolo_array_atual->tipo != $1.tipo_val) {
+                    yyerror("Erro Semantico: Tipo incompativel na inicializacao da matriz.");
+                } else {
+                    // TAC
+                    sprintf(buf, "%s[%d] = %s;\n", simbolo_array_atual->temp, idx_array_atual, $1.temp);
+                    strcat(instrucoes, buf);
+                    // C Transpilado
+                    sprintf(buf, "%s[%d] = %s;\n", simbolo_array_atual->nome, idx_array_atual, $1.c_expr);
+                    strcat(c_body, buf);
+                    
+                    idx_array_atual++;
+                }
+            } else {
+                yyerror("Erro Semantico: Excesso de elementos na inicializacao da matriz.");
+            }
+        }
+    }
+    | lista_valores ',' expressao {
+        if (simbolo_array_atual) {
+            if (idx_array_atual < tam_array_atual) {
+                if (simbolo_array_atual->tipo != $3.tipo_val) {
+                    yyerror("Erro Semantico: Tipo incompativel na inicializacao da matriz.");
+                } else {
+                    // TAC
+                    sprintf(buf, "%s[%d] = %s;\n", simbolo_array_atual->temp, idx_array_atual, $3.temp);
+                    strcat(instrucoes, buf);
+                    // C Transpilado
+                    sprintf(buf, "%s[%d] = %s;\n", simbolo_array_atual->nome, idx_array_atual, $3.c_expr);
+                    strcat(c_body, buf);
+                    
+                    idx_array_atual++;
+                }
+            } else {
+                yyerror("Erro Semantico: Excesso de elementos na inicializacao da matriz.");
+            }
+        }
+    }
+    ;
 
 %%
 
