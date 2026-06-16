@@ -5,6 +5,7 @@
 %}
 
 %option noyywrap
+%option yylineno
 %%
 
 "int"       { return TOKEN_INT; }

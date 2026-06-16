@@ -9,8 +9,13 @@ int cont_read = 0;
 int houve_erro = 0;
 int dentro_switch = 0;
 extern int yylex();
-void yyerror(const char *s) {printf("Erro: %s\n", s);
-houve_erro = 1;
+extern int yylineno;
+void yyerror(const char *s) {
+    fprintf(stderr, "\n----------------------------------------\n");
+    fprintf(stderr, "Erro na linha %d:\n", yylineno);
+    fprintf(stderr, "%s\n", s);
+    fprintf(stderr, "----------------------------------------\n");
+    houve_erro = 1;
 }
 
 char buf[200];

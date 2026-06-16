@@ -162,8 +162,27 @@ extern FILE *yyin, *yyout;
 #define EOB_ACT_END_OF_FILE 1
 #define EOB_ACT_LAST_MATCH 2
     
-    #define YY_LESS_LINENO(n)
-    #define YY_LINENO_REWIND_TO(ptr)
+    /* Note: We specifically omit the test for yy_rule_can_match_eol because it requires
+     *       access to the local variable yy_act. Since yyless() is a macro, it would break
+     *       existing scanners that call yyless() from OUTSIDE yylex.
+     *       One obvious solution it to make yy_act a global. I tried that, and saw
+     *       a 5% performance hit in a non-yylineno scanner, because yy_act is
+     *       normally declared as a register variable-- so it is not worth it.
+     */
+    #define  YY_LESS_LINENO(n) \
+            do { \
+                int yyl;\
+                for ( yyl = n; yyl < yyleng; ++yyl )\
+                    if ( yytext[yyl] == '\n' )\
+                        --yylineno;\
+            }while(0)
+    #define YY_LINENO_REWIND_TO(dst) \
+            do {\
+                const char *p;\
+                for ( p = yy_cp-1; p >= (dst); --p)\
+                    if ( *p == '\n' )\
+                        --yylineno;\
+            }while(0)
     
 /* Return all but the first "n" matched characters back to the input stream. */
 #define yyless(n) \
@@ -505,6 +524,13 @@ static const flex_int16_t yy_chk[186] =
       125,  125,  125,  125,  125
     } ;
 
+/* Table of booleans, true if rule could match eol. */
+static const flex_int32_t yy_rule_can_match_eol[50] =
+    {   0,
+0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 
+    0, 0, 0, 0, 0, 0, 0, 1, 0, 0,     };
+
 static yy_state_type yy_last_accepting_state;
 static char *yy_last_accepting_cpos;
 
@@ -524,8 +550,8 @@ char *yytext;
 #include <string.h>
 #include <stdlib.h>
 #include "sin.tab.h" 
-#line 527 "lex.yy.c"
-#line 528 "lex.yy.c"
+#line 553 "lex.yy.c"
+#line 554 "lex.yy.c"
 
 #define INITIAL 0
 
@@ -742,10 +768,10 @@ YY_DECL
 		}
 
 	{
-#line 8 "lexica.l"
+#line 9 "lexica.l"
 
 
-#line 748 "lex.yy.c"
+#line 774 "lex.yy.c"
 
 	while ( /*CONSTCOND*/1 )		/* loops until end-of-file is reached */
 		{
@@ -791,6 +817,16 @@ yy_find_action:
 
 		YY_DO_BEFORE_ACTION;
 
+		if ( yy_act != YY_END_OF_BUFFER && yy_rule_can_match_eol[yy_act] )
+			{
+			int yyl;
+			for ( yyl = 0; yyl < yyleng; ++yyl )
+				if ( yytext[yyl] == '\n' )
+					
+    yylineno++;
+;
+			}
+
 do_action:	/* This label is used only to access EOF actions. */
 
 		switch ( yy_act )
@@ -804,188 +840,188 @@ do_action:	/* This label is used only to access EOF actions. */
 
 case 1:
 YY_RULE_SETUP
-#line 10 "lexica.l"
+#line 11 "lexica.l"
 { return TOKEN_INT; }
 	YY_BREAK
 case 2:
 YY_RULE_SETUP
-#line 11 "lexica.l"
+#line 12 "lexica.l"
 { return TOKEN_FLOAT; }
 	YY_BREAK
 case 3:
 YY_RULE_SETUP
-#line 12 "lexica.l"
+#line 13 "lexica.l"
 { return TOKEN_CHAR; }
 	YY_BREAK
 case 4:
 YY_RULE_SETUP
-#line 13 "lexica.l"
+#line 14 "lexica.l"
 { return TOKEN_BOOL; }
 	YY_BREAK
 case 5:
 YY_RULE_SETUP
-#line 14 "lexica.l"
+#line 15 "lexica.l"
 { return TOKEN_STRING; }
 	YY_BREAK
 case 6:
 YY_RULE_SETUP
-#line 15 "lexica.l"
+#line 16 "lexica.l"
 { return TOKEN_PRINT; }
 	YY_BREAK
 case 7:
 YY_RULE_SETUP
-#line 16 "lexica.l"
+#line 17 "lexica.l"
 { return TOKEN_READ; }
 	YY_BREAK
 case 8:
 YY_RULE_SETUP
-#line 17 "lexica.l"
+#line 18 "lexica.l"
 { return TOKEN_IF; }
 	YY_BREAK
 case 9:
 YY_RULE_SETUP
-#line 18 "lexica.l"
+#line 19 "lexica.l"
 { return TOKEN_ELSE; }
 	YY_BREAK
 case 10:
 YY_RULE_SETUP
-#line 19 "lexica.l"
+#line 20 "lexica.l"
 { return TOKEN_WHILE; }
 	YY_BREAK
 case 11:
 YY_RULE_SETUP
-#line 20 "lexica.l"
+#line 21 "lexica.l"
 { return TOKEN_DO; }
 	YY_BREAK
 case 12:
 YY_RULE_SETUP
-#line 21 "lexica.l"
+#line 22 "lexica.l"
 { return TOKEN_FOR; }
 	YY_BREAK
 case 13:
 YY_RULE_SETUP
-#line 22 "lexica.l"
+#line 23 "lexica.l"
 { return TOKEN_SWITCH; }
 	YY_BREAK
 case 14:
 YY_RULE_SETUP
-#line 23 "lexica.l"
+#line 24 "lexica.l"
 { return TOKEN_CASE; }
 	YY_BREAK
 case 15:
 YY_RULE_SETUP
-#line 24 "lexica.l"
+#line 25 "lexica.l"
 { return TOKEN_DEFAULT; }
 	YY_BREAK
 case 16:
 YY_RULE_SETUP
-#line 25 "lexica.l"
+#line 26 "lexica.l"
 { return TOKEN_BREAK; }
 	YY_BREAK
 case 17:
 YY_RULE_SETUP
-#line 26 "lexica.l"
+#line 27 "lexica.l"
 { return TOKEN_CONTINUE; }
 	YY_BREAK
 case 18:
 /* rule 18 can match eol */
 YY_RULE_SETUP
-#line 27 "lexica.l"
+#line 28 "lexica.l"
 { yylval.valor_str = strdup(yytext); return STRING_LIT; }
 	YY_BREAK
 case 19:
 YY_RULE_SETUP
-#line 28 "lexica.l"
+#line 29 "lexica.l"
 { yylval.valor_str = strdup("true"); return BOOL_LIT; }
 	YY_BREAK
 case 20:
 YY_RULE_SETUP
-#line 29 "lexica.l"
+#line 30 "lexica.l"
 { yylval.valor_str = strdup("false"); return BOOL_LIT; }
 	YY_BREAK
 case 21:
 YY_RULE_SETUP
-#line 30 "lexica.l"
+#line 31 "lexica.l"
 { return TOKEN_MAIN; }
 	YY_BREAK
 case 22:
 YY_RULE_SETUP
-#line 32 "lexica.l"
+#line 33 "lexica.l"
 { return AND; }
 	YY_BREAK
 case 23:
 YY_RULE_SETUP
-#line 33 "lexica.l"
+#line 34 "lexica.l"
 { return OR; }
 	YY_BREAK
 case 24:
 YY_RULE_SETUP
-#line 34 "lexica.l"
+#line 35 "lexica.l"
 { return NOT; }
 	YY_BREAK
 case 25:
 YY_RULE_SETUP
-#line 35 "lexica.l"
+#line 36 "lexica.l"
 { return NE; }
 	YY_BREAK
 case 26:
 YY_RULE_SETUP
-#line 36 "lexica.l"
+#line 37 "lexica.l"
 { return LE; }
 	YY_BREAK
 case 27:
 YY_RULE_SETUP
-#line 37 "lexica.l"
+#line 38 "lexica.l"
 { return GE; }
 	YY_BREAK
 case 28:
 YY_RULE_SETUP
-#line 38 "lexica.l"
+#line 39 "lexica.l"
 { return '<'; }
 	YY_BREAK
 case 29:
 YY_RULE_SETUP
-#line 39 "lexica.l"
+#line 40 "lexica.l"
 { return '>'; }
 	YY_BREAK
 case 30:
 YY_RULE_SETUP
-#line 40 "lexica.l"
+#line 41 "lexica.l"
 { return EQ; }
 	YY_BREAK
 case 31:
 YY_RULE_SETUP
-#line 41 "lexica.l"
+#line 42 "lexica.l"
 { return PLUS_ASSIGN; }
 	YY_BREAK
 case 32:
 YY_RULE_SETUP
-#line 42 "lexica.l"
+#line 43 "lexica.l"
 { return MINUS_ASSIGN; }
 	YY_BREAK
 case 33:
 YY_RULE_SETUP
-#line 43 "lexica.l"
+#line 44 "lexica.l"
 { return MULT_ASSIGN; }
 	YY_BREAK
 case 34:
 YY_RULE_SETUP
-#line 44 "lexica.l"
+#line 45 "lexica.l"
 { return DIV_ASSIGN; }
 	YY_BREAK
 case 35:
 YY_RULE_SETUP
-#line 45 "lexica.l"
+#line 46 "lexica.l"
 { return INC; }
 	YY_BREAK
 case 36:
 YY_RULE_SETUP
-#line 46 "lexica.l"
+#line 47 "lexica.l"
 { return DEC; }
 	YY_BREAK
 case 37:
 YY_RULE_SETUP
-#line 48 "lexica.l"
+#line 49 "lexica.l"
 { 
                 yylval.valor_str = strdup(yytext); 
                 return NUM_INT; 
@@ -993,7 +1029,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 38:
 YY_RULE_SETUP
-#line 53 "lexica.l"
+#line 54 "lexica.l"
 { 
                 yylval.valor_str = strdup(yytext); 
                 return ID; 
@@ -1001,7 +1037,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 39:
 YY_RULE_SETUP
-#line 58 "lexica.l"
+#line 59 "lexica.l"
 { 
                 yylval.valor_str = strdup(yytext);
                 return NUM_FLOAT; 
@@ -1009,56 +1045,56 @@ YY_RULE_SETUP
 	YY_BREAK
 case 40:
 YY_RULE_SETUP
-#line 63 "lexica.l"
+#line 64 "lexica.l"
 { yylval.valor_str = strdup(yytext); return CHAR_LIT; }
 	YY_BREAK
 case 41:
 YY_RULE_SETUP
-#line 65 "lexica.l"
+#line 66 "lexica.l"
 { return ASSIGN; }
 	YY_BREAK
 case 42:
 YY_RULE_SETUP
-#line 66 "lexica.l"
+#line 67 "lexica.l"
 { return PLUS; }
 	YY_BREAK
 case 43:
 YY_RULE_SETUP
-#line 67 "lexica.l"
+#line 68 "lexica.l"
 { return ';'; }
 	YY_BREAK
 case 44:
 YY_RULE_SETUP
-#line 68 "lexica.l"
+#line 69 "lexica.l"
 { return '-'; }
 	YY_BREAK
 case 45:
 YY_RULE_SETUP
-#line 69 "lexica.l"
+#line 70 "lexica.l"
 { return '*'; }
 	YY_BREAK
 case 46:
 YY_RULE_SETUP
-#line 70 "lexica.l"
+#line 71 "lexica.l"
 { return '/'; }
 	YY_BREAK
 case 47:
 /* rule 47 can match eol */
 YY_RULE_SETUP
-#line 72 "lexica.l"
+#line 73 "lexica.l"
 { /* Ignora espaços, tabs e quebras de linha */ }
 	YY_BREAK
 case 48:
 YY_RULE_SETUP
-#line 74 "lexica.l"
+#line 75 "lexica.l"
 { return yytext[0]; }
 	YY_BREAK
 case 49:
 YY_RULE_SETUP
-#line 76 "lexica.l"
+#line 77 "lexica.l"
 ECHO;
 	YY_BREAK
-#line 1061 "lex.yy.c"
+#line 1097 "lex.yy.c"
 case YY_STATE_EOF(INITIAL):
 	yyterminate();
 
@@ -1426,6 +1462,10 @@ static int yy_get_next_buffer (void)
 
 	*--yy_cp = (char) c;
 
+    if ( c == '\n' ){
+        --yylineno;
+    }
+
 	(yytext_ptr) = yy_bp;
 	(yy_hold_char) = *yy_cp;
 	(yy_c_buf_p) = yy_cp;
@@ -1502,6 +1542,11 @@ static int yy_get_next_buffer (void)
 	c = *(unsigned char *) (yy_c_buf_p);	/* cast for 8-bit char's */
 	*(yy_c_buf_p) = '\0';	/* preserve yytext */
 	(yy_hold_char) = *++(yy_c_buf_p);
+
+	if ( c == '\n' )
+		
+    yylineno++;
+;
 
 	return c;
 }
@@ -1969,6 +2014,9 @@ static int yy_init_globals (void)
      * This function is called from yylex_destroy(), so don't allocate here.
      */
 
+    /* We do not touch yylineno unless the option is enabled. */
+    yylineno =  1;
+    
     (yy_buffer_stack) = NULL;
     (yy_buffer_stack_top) = 0;
     (yy_buffer_stack_max) = 0;
@@ -2063,5 +2111,5 @@ void yyfree (void * ptr )
 
 #define YYTABLES_NAME "yytables"
 
-#line 76 "lexica.l"
+#line 77 "lexica.l"
 
