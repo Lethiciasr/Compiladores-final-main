@@ -14,14 +14,14 @@ int T8;
 
 
 int calcular_dobro(int T1) {
-resultado = valor * 2;
-return resultado;
+T4 = T3;
+return T4;
 }
 
 int main()
 {
-numero = 7;
-dobro = calcular_dobro(numero);
-printf("%d\n", dobro);
+T6 = T5;
+T8 = T7;
+printf("%d\n", T8);
     return 0;
 }

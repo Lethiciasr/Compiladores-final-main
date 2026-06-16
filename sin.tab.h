@@ -54,48 +54,48 @@ extern int yydebug;
     YYEOF = 0,                     /* "end of file"  */
     YYerror = 256,                 /* error  */
     YYUNDEF = 257,                 /* "invalid token"  */
-    TOKEN_INT = 258,               /* TOKEN_INT  */
-    TOKEN_FLOAT = 259,             /* TOKEN_FLOAT  */
-    TOKEN_CHAR = 260,              /* TOKEN_CHAR  */
-    TOKEN_BOOL = 261,              /* TOKEN_BOOL  */
-    TOKEN_STRING = 262,            /* TOKEN_STRING  */
-    TOKEN_PRINT = 263,             /* TOKEN_PRINT  */
-    TOKEN_READ = 264,              /* TOKEN_READ  */
-    TOKEN_IF = 265,                /* TOKEN_IF  */
-    TOKEN_ELSE = 266,              /* TOKEN_ELSE  */
-    TOKEN_WHILE = 267,             /* TOKEN_WHILE  */
-    TOKEN_DO = 268,                /* TOKEN_DO  */
-    TOKEN_FOR = 269,               /* TOKEN_FOR  */
-    TOKEN_SWITCH = 270,            /* TOKEN_SWITCH  */
-    TOKEN_CASE = 271,              /* TOKEN_CASE  */
-    TOKEN_DEFAULT = 272,           /* TOKEN_DEFAULT  */
-    TOKEN_BREAK = 273,             /* TOKEN_BREAK  */
-    TOKEN_CONTINUE = 274,          /* TOKEN_CONTINUE  */
-    TOKEN_MAIN = 275,              /* TOKEN_MAIN  */
-    TOKEN_RETURN = 276,            /* TOKEN_RETURN  */
-    STRING_LIT = 277,              /* STRING_LIT  */
-    BOOL_LIT = 278,                /* BOOL_LIT  */
-    NUM_INT = 279,                 /* NUM_INT  */
-    NUM_FLOAT = 280,               /* NUM_FLOAT  */
-    CHAR_LIT = 281,                /* CHAR_LIT  */
-    ID = 282,                      /* ID  */
-    OR = 283,                      /* OR  */
-    AND = 284,                     /* AND  */
-    EQ = 285,                      /* EQ  */
-    NE = 286,                      /* NE  */
-    LE = 287,                      /* LE  */
-    GE = 288,                      /* GE  */
-    PLUS = 289,                    /* PLUS  */
-    NOT = 290,                     /* NOT  */
-    UMINUS = 291,                  /* UMINUS  */
-    CAST = 292,                    /* CAST  */
-    ASSIGN = 293,                  /* ASSIGN  */
-    PLUS_ASSIGN = 294,             /* PLUS_ASSIGN  */
-    MINUS_ASSIGN = 295,            /* MINUS_ASSIGN  */
-    MULT_ASSIGN = 296,             /* MULT_ASSIGN  */
-    DIV_ASSIGN = 297,              /* DIV_ASSIGN  */
-    INC = 298,                     /* INC  */
-    DEC = 299                      /* DEC  */
+    TOKEN_FOR = 258,               /* TOKEN_FOR  */
+    TOKEN_MAIN = 259,              /* TOKEN_MAIN  */
+    TOKEN_RETURN = 260,            /* TOKEN_RETURN  */
+    ID = 261,                      /* ID  */
+    NUM_INT = 262,                 /* NUM_INT  */
+    NUM_FLOAT = 263,               /* NUM_FLOAT  */
+    CHAR_LIT = 264,                /* CHAR_LIT  */
+    BOOL_LIT = 265,                /* BOOL_LIT  */
+    STRING_LIT = 266,              /* STRING_LIT  */
+    TOKEN_INT = 267,               /* TOKEN_INT  */
+    TOKEN_FLOAT = 268,             /* TOKEN_FLOAT  */
+    TOKEN_CHAR = 269,              /* TOKEN_CHAR  */
+    TOKEN_BOOL = 270,              /* TOKEN_BOOL  */
+    TOKEN_STRING = 271,            /* TOKEN_STRING  */
+    ASSIGN = 272,                  /* ASSIGN  */
+    PLUS = 273,                    /* PLUS  */
+    TOKEN_PRINT = 274,             /* TOKEN_PRINT  */
+    TOKEN_READ = 275,              /* TOKEN_READ  */
+    TOKEN_IF = 276,                /* TOKEN_IF  */
+    TOKEN_ELSE = 277,              /* TOKEN_ELSE  */
+    TOKEN_WHILE = 278,             /* TOKEN_WHILE  */
+    TOKEN_DO = 279,                /* TOKEN_DO  */
+    TOKEN_SWITCH = 280,            /* TOKEN_SWITCH  */
+    TOKEN_CASE = 281,              /* TOKEN_CASE  */
+    TOKEN_DEFAULT = 282,           /* TOKEN_DEFAULT  */
+    TOKEN_BREAK = 283,             /* TOKEN_BREAK  */
+    TOKEN_CONTINUE = 284,          /* TOKEN_CONTINUE  */
+    AND = 285,                     /* AND  */
+    OR = 286,                      /* OR  */
+    EQ = 287,                      /* EQ  */
+    NE = 288,                      /* NE  */
+    LE = 289,                      /* LE  */
+    GE = 290,                      /* GE  */
+    NOT = 291,                     /* NOT  */
+    PLUS_ASSIGN = 292,             /* PLUS_ASSIGN  */
+    MINUS_ASSIGN = 293,            /* MINUS_ASSIGN  */
+    MULT_ASSIGN = 294,             /* MULT_ASSIGN  */
+    DIV_ASSIGN = 295,              /* DIV_ASSIGN  */
+    INC = 296,                     /* INC  */
+    DEC = 297,                     /* DEC  */
+    CAST = 298,                    /* CAST  */
+    UMINUS = 299                   /* UMINUS  */
   };
   typedef enum yytokentype yytoken_kind_t;
 #endif
@@ -114,14 +114,13 @@ union YYSTYPE
         int tam_str;
     } info;
     
-    // Suporte para acumular metadados de listas de parâmetros de funções
     struct {
         int qtd;
-        Tipo tipos[10]; // CORRIGIDO: Alterado de 'int' para 'Tipo' para bater com o tabela.h
+        Tipo tipos[10];
         char* c_args;
     } lista_params;
 
-#line 125 "sin.tab.h"
+#line 124 "sin.tab.h"
 
 };
 typedef union YYSTYPE YYSTYPE;

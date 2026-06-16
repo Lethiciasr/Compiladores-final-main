@@ -10,6 +10,7 @@ int houve_erro = 0;
 int dentro_switch = 0;
 extern int yylex();
 extern int yylineno;
+
 void yyerror(const char *s) {
     fprintf(stderr, "\n----------------------------------------\n");
     fprintf(stderr, "Erro na linha %d:\n", yylineno);
@@ -33,7 +34,6 @@ int topo_laco = 0;
 Simbolo *simbolo_array_atual = NULL;
 int idx_array_atual = 0;
 int tam_array_atual = 0;
-
 int escopo_atual = 0;
 %}
 
@@ -46,38 +46,44 @@ int escopo_atual = 0;
         int tam_str;
     } info;
     
-    // Suporte para acumular metadados de listas de parâmetros de funções
     struct {
         int qtd;
-        Tipo tipos[10]; // CORRIGIDO: Alterado de 'int' para 'Tipo' para bater com o tabela.h
+        Tipo tipos[10];
         char* c_args;
     } lista_params;
 }
 
-%token TOKEN_INT TOKEN_FLOAT TOKEN_CHAR TOKEN_BOOL TOKEN_STRING
-%token TOKEN_PRINT TOKEN_READ TOKEN_IF TOKEN_ELSE TOKEN_WHILE TOKEN_DO TOKEN_FOR
-%token TOKEN_SWITCH TOKEN_CASE TOKEN_DEFAULT TOKEN_BREAK TOKEN_CONTINUE TOKEN_MAIN TOKEN_RETURN
-%token <valor_str> STRING_LIT BOOL_LIT NUM_INT NUM_FLOAT CHAR_LIT ID
+%token TOKEN_FOR
+%token TOKEN_MAIN
+%token TOKEN_RETURN
+%token <valor_str> ID NUM_INT NUM_FLOAT CHAR_LIT BOOL_LIT STRING_LIT
+%token TOKEN_INT TOKEN_FLOAT TOKEN_CHAR TOKEN_BOOL TOKEN_STRING ASSIGN PLUS
+%token TOKEN_PRINT TOKEN_READ TOKEN_IF TOKEN_ELSE TOKEN_WHILE TOKEN_DO
+%token TOKEN_SWITCH TOKEN_CASE TOKEN_DEFAULT TOKEN_BREAK
+%token TOKEN_CONTINUE
+%token AND OR EQ NE LE GE NOT
+%token PLUS_ASSIGN MINUS_ASSIGN MULT_ASSIGN DIV_ASSIGN
+%token INC DEC
 
-%type <info> expressao termo fator declaracao atribuicao comando comandos comandos_bloco bloco condicao_if laco_while laco_do_while laco_for estrutura_switch casos caso_default elemento_inicializador lista_inicializadores chamada_argumentos chamada_argumentos_lista
-%type <lista_params> parametros_opc parametros_lista
+%define parse.error verbose
 
 %left OR
 %left AND
-%left EQ NE
-%left '<' '>' LE GE
+%left EQ NE '<' '>' LE GE
 %left PLUS '-'
 %left '*' '/'
-%right NOT UMINUS CAST
-%right ASSIGN PLUS_ASSIGN MINUS_ASSIGN MULT_ASSIGN DIV_ASSIGN
-%right INC DEC
+%right NOT
+%right CAST
+%right UMINUS
+
+%type <info> expressao termo fator declaracao atribuicao comando comandos_bloco bloco elemento_inicializador lista_inicializadores chamada_argumentos chamada_argumentos_lista
+%type <valor_str> if_cond incremento_for for_init
+%type <lista_params> parametros_opc parametros_lista
 
 %%
 
-// O programa agora aceita elementos globais (variáveis ou funções) antes da main
 programa 
     : elementos_globais TOKEN_MAIN '(' ')' bloco {
-        // Encerra a construção colocando o bloco principal da main no corpo de C
         strcat(c_body, $5.c_expr);
     }
     ;
@@ -96,31 +102,26 @@ tipo
     | TOKEN_STRING { $<info>$.tipo_val = T_STRING; }
     ;
 
-// Definição de Subprograma (Função)
 funcao 
     : tipo ID '(' parametros_opc ')' {
-        // Insere a assinatura da função na tabela de símbolos (escopo global 0)
-        inserir_funcao($2, $<info>1.tipo_val, $4.qtd, $4.tipos);
-        
-        // Inicializa o cabeçalho no buffer C global de declarações externas
         char const* t_nome = ($<info>1.tipo_val == T_INT) ? "int" : 
                              (($<info>1.tipo_val == T_FLOAT) ? "float" : 
                              (($<info>1.tipo_val == T_CHAR) ? "char" : "int"));
+                             
         sprintf(buf, "\n%s %s(%s) {\n", t_nome, $2, $4.c_args);
         strcat(c_code_body, buf); 
         
-        // Entra no nível interno de escopo para as variáveis locais e parâmetros
         escopo_atual++; 
     } 
     bloco_funcao {
         escopo_atual--;
-        strcat(c_code_body, "}\n\n");
     }
     ;
 
 bloco_funcao 
     : '{' comandos_bloco '}' {
         strcat(c_code_body, $2.c_expr);
+        strcat(c_code_body, "}\n\n");
         remover_simbolos_do_nivel(escopo_atual);
     }
     ;
@@ -137,7 +138,6 @@ parametros_lista
         char temp_arg[100];
         char const* t_nome = ($<info>1.tipo_val == T_INT) ? "int" : (($<info>1.tipo_val == T_FLOAT) ? "float" : "char");
         
-        // Insere o parâmetro no escopo interno da função (escopo_atual + 1)
         Simbolo* s = inserir($2, $<info>1.tipo_val, escopo_atual + 1);
         sprintf(temp_arg, "%s %s", t_nome, s->temp);
         $$.c_args = strdup(temp_arg);
@@ -166,109 +166,382 @@ bloco
     ;
 
 comandos_bloco 
-    : comandos { $$ = $1; }
-    | /* vazio */ { $$.c_expr = strdup(""); }
-    ;
-
-comandos 
-    : comando comandos {
+    : comando comandos_bloco {
         char *res = (char*) malloc(strlen($1.c_expr) + strlen($2.c_expr) + 2);
         sprintf(res, "%s%s", $1.c_expr, $2.c_expr);
         $$.c_expr = res;
     }
-    | comando { $$ = $1; }
+    | /* vazio */ { $$.c_expr = strdup(""); }
+    ;
+
+if_cond : TOKEN_IF '(' expressao ')' {
+    if ($3.tipo_val != T_BOOL) {
+        yyerror("Erro Semantico: A condicao do 'if' deve ser booleana.");
+    }
+    char* l_false = novo_label();
+    char* t_inv = novo_temp(T_BOOL);
+    sprintf(buf, "%s = !%s;\n", t_inv, $3.temp);
+    strcat(instrucoes, buf);
+    sprintf(buf, "if (%s) goto %s;\n", t_inv, l_false);
+    strcat(instrucoes, buf);
+    strcat(instrucoes, "\n");
+    
+    $<valor_str>$ = l_false; 
+}
+;
+
+for_init : ID ASSIGN expressao {
+    Simbolo *s = buscar($1);
+    if (!s) {
+        yyerror("Erro: Variavel nao declarada na inicializacao do for.");
+        $$ = strdup("");
+    } else {
+        sprintf(buf, "%s = %s;\n", s->temp, $3.temp);
+        strcat(instrucoes, buf);
+        char* init_str = (char*) malloc(256);
+        sprintf(init_str, "%s = %s", s->temp, $3.temp);
+        $$ = init_str;
+    }
+}
+;
+
+incremento_for : ID ASSIGN expressao {
+    Simbolo *s = buscar($1);
+    if (!s) {
+        yyerror("Erro: Variavel nao declarada no incremento do for.");
+        $$ = strdup("");
+    } else {
+        sprintf(inc_3ac, "%s = %s;\n", s->temp, $3.temp);
+        char* inc_str = (char*) malloc(256);
+        sprintf(inc_str, "%s = %s", s->temp, $3.temp);
+        $$ = inc_str;
+    }
+}
+| ID INC {
+    Simbolo *s = buscar($1);
+    if (!s) {
+        yyerror("Erro: Variavel nao declarada no incremento do for.");
+        $$ = strdup("");
+    } else {
+        sprintf(inc_3ac, "%s = %s + 1;\n", s->temp, s->temp);
+        char* inc_str = (char*) malloc(256);
+        sprintf(inc_str, "%s++", s->temp);
+        $$ = inc_str;
+    }
+}
+| ID DEC {
+    Simbolo *s = buscar($1);
+    if (!s) {
+        yyerror("Erro: Variavel nao declarada no decremento do for.");
+        $$ = strdup("");
+    } else {
+        sprintf(inc_3ac, "%s = %s - 1;\n", s->temp, s->temp);
+        char* inc_str = (char*) malloc(256);
+        sprintf(inc_str, "%s--", s->temp);
+        $$ = inc_str;
+    }
+}
+;
+
+casos_lista : caso casos_lista
+            | default_caso
+            | /* vazio */
+            ;
+
+caso : TOKEN_CASE expressao ':' {
+        char* l_proximo = novo_label();
+        char* t_cmp = novo_temp(T_BOOL);
+        sprintf(buf, "%s = %s == %s;\n", t_cmp, switch_exp, $2.temp);
+        strcat(instrucoes, buf);
+        char* t_inv = novo_temp(T_BOOL);
+        sprintf(buf, "%s = !%s;\n", t_inv, t_cmp);
+        strcat(instrucoes, buf);
+        sprintf(buf, "if (%s) goto %s;\n", t_inv, l_proximo);
+        strcat(instrucoes, buf);
+
+        sprintf(buf, "case %s:\n", $2.temp);
+        strcat(c_body, buf);
+        $<valor_str>$ = l_proximo;
+    } comandos_bloco {
+        sprintf(buf, "goto %s;\n", switch_fim);
+        strcat(instrucoes, buf);
+        sprintf(buf, "%s:\n", $<valor_str>4);
+        strcat(instrucoes, buf);
+    }
+    ;
+
+default_caso : TOKEN_DEFAULT ':' {
+        strcat(c_body, "default:\n");
+    } comandos_bloco
     ;
 
 comando 
-    : declaracao ';'   { $$ = $1; }
-    | atribuicao ';'   { $$ = $1; }
-    | condicao_if      { $$ = $1; }
-    | laco_while       { $$ = $1; }
-    | laco_do_while ';' { $$ = $1; }
-    | laco_for         { $$ = $1; }
-    | estrutura_switch { $$ = $1; }
-    | TOKEN_PRINT '(' expressao ')' ';' {
-        char* c_out = (char*) malloc(256);
-        if ($3.tipo_val == T_INT) {
-            sprintf(buf, "printf(\"%%d\\n\", %s);\n", $3.temp);
-            sprintf(c_out, "printf(\"%%d\\n\", %s);\n", $3.c_expr);
-        } else if ($3.tipo_val == T_FLOAT) {
-            sprintf(buf, "printf(\"%%f\\n\", %s);\n", $3.temp);
-            sprintf(c_out, "printf(\"%%f\\n\", %s);\n", $3.c_expr);
-        } else if ($3.tipo_val == T_CHAR) {
-            sprintf(buf, "printf(\"%%c\\n\", %s);\n", $3.temp);
-            sprintf(c_out, "printf(\"%%c\\n\", %s);\n", $3.c_expr);
-        } else if ($3.tipo_val == T_BOOL) {
-            sprintf(buf, "printf(\"%%s\\n\", %s ? \"true\" : \"false\");\n", $3.temp);
-            sprintf(c_out, "printf(\"%%s\\n\", %s ? \"true\" : \"false\");\n", $3.c_expr);
-        } else if ($3.tipo_val == T_STRING) {
-            sprintf(buf, "printf(\"%%s\\n\", %s);\n", $3.temp);
-            sprintf(c_out, "printf(\"%%s\\n\", %s);\n", $3.c_expr);
-        }
-        strcat(instrucoes, buf);
-        $$.c_expr = c_out;
-    }
-    | TOKEN_READ '(' ID ')' ';' {
-        Simbolo *s = buscar($3);
-        char* c_out = (char*) malloc(256);
-        if (s == NULL) {
-            yyerror("Erro Semantico: Variavel nao declarada.");
-            $$.c_expr = strdup("");
-        } else {
-            if (s->tipo == T_INT) {
-                sprintf(buf, "scanf(\"%%d\", &%s);\n", s->temp);
-                sprintf(c_out, "scanf(\"%%d\", &%s);\n", s->nome);
-            } else if (s->tipo == T_FLOAT) {
-                sprintf(buf, "scanf(\"%%f\", &%s);\n", s->temp);
-                sprintf(c_out, "scanf(\"%%f\", &%s);\n", s->nome);
-            } else if (s->tipo == T_CHAR) {
-                sprintf(buf, "scanf(\" %%c\", &%s);\n", s->temp);
-                sprintf(c_out, "scanf(\" %%c\", &%s);\n", s->nome);
-            } else if (s->tipo == T_STRING) {
-                sprintf(buf, "scanf(\"%%s\", %s);\n", s->temp);
-                sprintf(c_out, "scanf(\"%%s\", %s);\n", s->nome);
-            }
-            strcat(instrucoes, buf);
-            $$.c_expr = c_out;
-        }
-    }
-    | TOKEN_BREAK ';' {
-        if (!dentro_switch && topo_laco == 0) {
-            yyerror("Erro Semantico: 'break' usado fora de laco ou switch.");
-        }
-        char* c_out = (char*) malloc(100);
-        if (dentro_switch) {
-            sprintf(buf, "goto %s;\n", switch_fim);
-            sprintf(c_out, "break;\n");
-        } else {
-            sprintf(buf, "goto %s;\n", pilha_fim[topo_laco - 1]);
-            sprintf(c_out, "break;\n");
-        }
-        strcat(instrucoes, buf);
-        $$.c_expr = c_out;
-    }
-    | TOKEN_CONTINUE ';' {
-        if (topo_laco == 0) {
-            yyerror("Erro Semantico: 'continue' usado fora de um laco.");
-        }
-        char* c_out = (char*) malloc(100);
-        sprintf(buf, "goto %s;\n", pilha_inicio[topo_laco - 1]);
-        sprintf(c_out, "continue;\n");
-        strcat(instrucoes, buf);
-        $$.c_expr = c_out;
-    }
+    : declaracao ';' { $$ = $1; }
+    | atribuicao ';' { $$ = $1; }
+    | expressao ';' { $$.c_expr = strdup(""); }
+    | bloco { $$ = $1; }
     | TOKEN_RETURN expressao ';' {
-        // Implementação do retorno do subprograma
         char* c_out = (char*) malloc(256);
         sprintf(buf, "return %s;\n", $2.temp);
         strcat(instrucoes, buf);
-        
-        sprintf(c_out, "return %s;\n", $2.c_expr);
+        sprintf(c_out, "return %s;\n", $2.temp);
         $$.c_expr = c_out;
     }
-    | expressao ';' {
-        char* c_out = (char*) malloc(strlen($1.c_expr) + 5);
-        sprintf(c_out, "%s;\n", $1.c_expr);
+    | TOKEN_PRINT '(' expressao ')' ';' {
+        char* c_out = (char*) malloc(256);
+        char* formato = "";
+        if ($3.tipo_val == T_INT || $3.tipo_val == T_BOOL) formato = "%d";
+        else if ($3.tipo_val == T_FLOAT) formato = "%f";
+        else if ($3.tipo_val == T_CHAR) formato = "%c";
+        else if ($3.tipo_val == T_STRING) formato = "%s";
+        
+        sprintf(buf, "printf(\"%s\\n\", %s);\n", formato, $3.temp);
+        strcat(instrucoes, buf);
+        sprintf(c_out, "printf(\"%s\\n\", %s);\n", formato, $3.temp);
+        $$.c_expr = c_out;
+    }
+    | TOKEN_READ '(' ID ')' ';' {
+        char* c_out = (char*) malloc(256);
+        Simbolo *s = buscar($3);
+        if (!s) {
+            yyerror("Erro Semantico: Variavel nao declarada para leitura.");
+        } else {
+            char* formato = "";
+            if (s->tipo == T_INT || s->tipo == T_BOOL) formato = "%d";
+            else if (s->tipo == T_FLOAT) formato = "%f";
+            else if (s->tipo == T_CHAR) formato = " %c";
+
+            if (s->tipo == T_STRING) {
+                sprintf(buf, "scanf(\"%%255s\", %s);\n", s->temp);
+                sprintf(c_out, "scanf(\"%%255s\", %s);\n", s->temp);
+            } else {
+                sprintf(buf, "scanf(\"%s\", &%s);\n", formato, s->temp);
+                sprintf(c_out, "scanf(\"%s\", &%s);\n", formato, s->temp);
+            }
+            strcat(instrucoes, buf);
+        }
+        $$.c_expr = c_out;
+    }
+    | if_cond comando {
+        char* c_out = (char*) malloc(1024);
+        sprintf(buf, "%s:\n", $<valor_str>1);
+        strcat(instrucoes, buf);
+        sprintf(c_out, "if (%s) {\n%s}\n", $<valor_str>1, $2.c_expr);
+        $$.c_expr = c_out;
+    }
+    | if_cond comando TOKEN_ELSE {
+        char* l_fim = novo_label();
+        sprintf(buf, "goto %s;\n", l_fim);
+        strcat(instrucoes, buf);
+        sprintf(buf, "%s:\n", $<valor_str>1);
+        strcat(instrucoes, buf);
+        $<valor_str>$ = l_fim;
+    } comando {
+        char* c_out = (char*) malloc(2048);
+        sprintf(buf, "%s:\n", $<valor_str>4);
+        strcat(instrucoes, buf);
+        sprintf(c_out, "if (...) {\n%s} else {\n%s}\n", $2.c_expr, $5.c_expr);
+        $$.c_expr = c_out;
+    }
+    | TOKEN_WHILE {
+        char* l_inicio = novo_label();
+        sprintf(buf, "%s:\n", l_inicio);
+        strcat(instrucoes, buf);
+        $<valor_str>$ = l_inicio; 
+        strcpy(pilha_inicio[topo_laco], l_inicio);
+    } '(' expressao ')' {
+        if ($4.tipo_val != T_BOOL) yyerror("Erro Semantico: Condicao deve ser booleana.");
+        char* l_fim = novo_label();
+        char* t_inv = novo_temp(T_BOOL);
+        sprintf(buf, "%s = !%s;\n", t_inv, $4.temp);
+        strcat(instrucoes, buf);
+        sprintf(buf, "if (%s) goto %s;\n", t_inv, l_fim);
+        strcat(instrucoes, buf);
+        $<valor_str>$ = l_fim; 
+        strcpy(pilha_fim[topo_laco], l_fim);
+        topo_laco++;
+    } comando { 
+        topo_laco--;
+        sprintf(buf, "goto %s;\n", pilha_inicio[topo_laco]);
+        strcat(instrucoes, buf);
+        sprintf(buf, "%s:\n", pilha_fim[topo_laco]);
+        strcat(instrucoes, buf);
+        
+        char* c_out = (char*) malloc(1024);
+        sprintf(c_out, "while (%s) {\n%s}\n", $4.temp, $7.c_expr);
+        $$.c_expr = c_out;
+    }
+    | TOKEN_DO {
+        char* l_inicio = novo_label();
+        sprintf(buf, "%s:\n", l_inicio);
+        strcat(instrucoes, buf);
+        $<valor_str>$ = l_inicio;
+    } comando TOKEN_WHILE '(' expressao ')' ';' {
+        if ($6.tipo_val != T_BOOL) yyerror("Erro Semantico: Condicao do do-while deve ser booleana.");
+        sprintf(buf, "if (%s) goto %s;\n", $6.temp, $<valor_str>2);
+        strcat(instrucoes, buf);
+        
+        char* c_out = (char*) malloc(1024);
+        sprintf(c_out, "do {\n%s} while (%s);\n", $3.c_expr, $6.temp);
+        $$.c_expr = c_out;
+    }
+    | TOKEN_FOR '(' for_init ';' {
+        char* l_inicio = novo_label();
+        char* l_incremento = novo_label(); 
+        sprintf(buf, "%s:\n", l_inicio);
+        strcat(instrucoes, buf);
+        $<valor_str>$ = l_inicio; 
+        strcpy(pilha_inicio[topo_laco], l_incremento);
+    } expressao ';' {
+        if ($6.tipo_val != T_BOOL) yyerror("Erro Semantico: Condicao do for deve ser booleana.");
+        char* l_fim = novo_label();
+        char* t_inv = novo_temp(T_BOOL);
+        sprintf(buf, "%s = !%s;\n", t_inv, $6.temp);
+        strcat(instrucoes, buf);
+        sprintf(buf, "if (%s) goto %s;\n", t_inv, l_fim);
+        strcat(instrucoes, buf);
+        $<valor_str>$ = l_fim;
+        strcpy(pilha_fim[topo_laco], l_fim);
+        topo_laco++;
+    } incremento_for ')' comando {
+        topo_laco--; 
+        sprintf(buf, "%s:\n", pilha_inicio[topo_laco]);
+        strcat(instrucoes, buf);
+        strcat(instrucoes, inc_3ac);
+        sprintf(buf, "goto %s;\n", $<valor_str>5);
+        strcat(instrucoes, buf);
+        sprintf(buf, "%s:\n", $<valor_str>8);
+        strcat(instrucoes, buf);
+        
+        char* c_out = (char*) malloc(2048);
+        sprintf(c_out, "for (%s; %s; %s) {\n%s}\n", $3, $6.temp, $9, $11.c_expr);
+        $$.c_expr = c_out;
+    }
+    | TOKEN_SWITCH '(' expressao ')' {
+        dentro_switch++;
+        strcpy(switch_exp, $3.temp);
+        strcpy(switch_fim, novo_label());
+        strcpy(pilha_fim[topo_laco], switch_fim);
+        strcpy(pilha_inicio[topo_laco], "ERRO_CONTINUE_SWITCH");
+        topo_laco++;
+    } '{' casos_lista '}' {
+        dentro_switch--;
+        topo_laco--;
+        sprintf(buf, "%s:\n", switch_fim);
+        strcat(instrucoes, buf);
+        
+        char* c_out = (char*) malloc(512);
+        sprintf(c_out, "switch (%s) { /* ... */ }\n", $3.temp);
+        $$.c_expr = c_out;
+    }
+    | TOKEN_BREAK ';' {
+        if (topo_laco > 0) {
+            sprintf(buf, "goto %s;\n", pilha_fim[topo_laco - 1]);
+            strcat(instrucoes, buf);
+        } else if (dentro_switch > 0) {
+            sprintf(buf, "goto %s;\n", switch_fim);
+            strcat(instrucoes, buf);
+        } else {
+            yyerror("Erro Semantico: 'break' usado fora de laco ou switch.");
+        }
+        $$.c_expr = strdup("break;\n");
+    }
+    | TOKEN_CONTINUE ';' {
+        if (topo_laco == 0) {
+            yyerror("Erro Semantico: 'continue' usado fora de laco.");
+        } else {
+            sprintf(buf, "goto %s;\n", pilha_inicio[topo_laco - 1]);
+            strcat(instrucoes, buf);
+        }
+        $$.c_expr = strdup("continue;\n");
+    }
+    | ID PLUS_ASSIGN expressao ';' {
+        Simbolo *s = buscar($1);
+        char* c_out = (char*) malloc(256);
+        if (!s) yyerror("Erro Semantico: Variavel nao declarada.");
+        else {
+            char* t_op = novo_temp(s->tipo);
+            sprintf(buf, "%s = %s + %s;\n", t_op, s->temp, $3.temp);
+            strcat(instrucoes, buf);
+            sprintf(buf, "%s = %s;\n", s->temp, t_op);
+            strcat(instrucoes, buf);
+            sprintf(c_out, "%s += %s;\n", s->temp, $3.temp);
+        }
+        $$.c_expr = c_out;
+    }
+    | ID MINUS_ASSIGN expressao ';' {
+        Simbolo *s = buscar($1);
+        char* c_out = (char*) malloc(256);
+        if (!s) yyerror("Erro Semantico: Variavel nao declarada.");
+        else {
+            char* t_op = novo_temp(s->tipo);
+            sprintf(buf, "%s = %s - %s;\n", t_op, s->temp, $3.temp);
+            strcat(instrucoes, buf);
+            sprintf(buf, "%s = %s;\n", s->temp, t_op);
+            strcat(instrucoes, buf);
+            sprintf(c_out, "%s -= %s;\n", s->temp, $3.temp);
+        }
+        $$.c_expr = c_out;
+    }
+    | ID MULT_ASSIGN expressao ';' {
+        Simbolo *s = buscar($1);
+        char* c_out = (char*) malloc(256);
+        if (!s) yyerror("Erro Semantico: Variavel nao declarada.");
+        else {
+            char* t_op = novo_temp(s->tipo);
+            sprintf(buf, "%s = %s * %s;\n", t_op, s->temp, $3.temp);
+            strcat(instrucoes, buf);
+            sprintf(buf, "%s = %s;\n", s->temp, t_op);
+            strcat(instrucoes, buf);
+            sprintf(c_out, "%s *= %s;\n", s->temp, $3.temp);
+        }
+        $$.c_expr = c_out;
+    }
+    | ID DIV_ASSIGN expressao ';' {
+        Simbolo *s = buscar($1);
+        char* c_out = (char*) malloc(256);
+        if (!s) yyerror("Erro Semantico: Variavel nao declarada.");
+        else {
+            char* t_op = novo_temp(s->tipo);
+            sprintf(buf, "%s = %s / %s;\n", t_op, s->temp, $3.temp);
+            strcat(instrucoes, buf);
+            sprintf(buf, "%s = %s;\n", s->temp, t_op);
+            strcat(instrucoes, buf);
+            sprintf(c_out, "%s /= %s;\n", s->temp, $3.temp);
+        }
+        $$.c_expr = c_out;
+    }
+    | ID INC ';' {
+        Simbolo *s = buscar($1);
+        if (!s) yyerror("Erro Semantico: Variavel nao declarada.");
+        else {
+            sprintf(buf, "%s = %s + 1;\n", s->temp, s->temp);
+            strcat(instrucoes, buf);
+        }
+        char* c_out = (char*) malloc(256);
+        sprintf(c_out, "%s++;\n", s ? s->temp : $1);
+        $$.c_expr = c_out;
+    }
+    | ID DEC ';' {
+        Simbolo *s = buscar($1);
+        if (!s) yyerror("Erro Semantico: Variavel nao declarada.");
+        else {
+            sprintf(buf, "%s = %s - 1;\n", s->temp, s->temp);
+            strcat(instrucoes, buf);
+        }
+        char* c_out = (char*) malloc(256);
+        sprintf(c_out, "%s--;\n", s ? s->temp : $1);
+        $$.c_expr = c_out;
+    }
+    | ID '[' expressao ']' ASSIGN expressao ';' {
+        Simbolo *s = buscar($1);
+        if (!s) yyerror("Erro Semantico: Matriz nao declarada.");
+        else {
+            sprintf(buf, "%s[%s] = %s;\n", s->temp, $3.temp, $6.temp);
+            strcat(instrucoes, buf);
+        }
+        char* c_out = (char*) malloc(256);
+        sprintf(c_out, "%s[%s] = %s;\n", s ? s->temp : $1, $3.temp, $6.temp);
         $$.c_expr = c_out;
     }
     ;
@@ -276,84 +549,47 @@ comando
 declaracao 
     : tipo ID {
         if (buscar($2) != NULL && buscar($2)->nivel == escopo_atual) {
-            yyerror("Erro Semantico: Variavel ja declarada neste escopo.");
+            yyerror("Erro Semantico: Variavel ja declarada.");
         } else {
             inserir($2, $<info>1.tipo_val, escopo_atual);
         }
         $$.c_expr = strdup("");
     }
     | tipo ID ASSIGN expressao {
-        Simbolo *s = buscar($2);
-        if (s != NULL && s->nivel == escopo_atual) {
-            yyerror("Erro Semantico: Variavel ja declarada neste escopo.");
-        } else {
-            s = inserir($2, $<info>1.tipo_val, escopo_atual);
-            char* expr_temp = $4.temp;
-            char* expr_c = $4.c_expr;
-            if ($<info>1.tipo_val == T_FLOAT && $4.tipo_val == T_INT) {
-                expr_temp = gerar_cast($4.temp, T_FLOAT);
-                char* cast_c = (char*) malloc(strlen($4.c_expr) + 20);
-                sprintf(cast_c, "(float)(%s)", $4.c_expr);
-                expr_c = cast_c;
-            } else if ($<info>1.tipo_val == T_INT && $4.tipo_val == T_FLOAT) {
-                expr_temp = gerar_cast($4.temp, T_INT);
-                char* cast_c = (char*) malloc(strlen($4.c_expr) + 20);
-                sprintf(cast_c, "(int)(%s)", $4.c_expr);
-                expr_c = cast_c;
-            }
-            if ($<info>1.tipo_val == T_STRING) {
-                sprintf(buf, "strcpy(%s, %s);\n", s->temp, expr_temp);
-                strcat(instrucoes, buf);
-                char* c_out = (char*) malloc(256);
-                sprintf(c_out, "strcpy(%s, %s);\n", s->nome, expr_c);
-                $$.c_expr = c_out;
-            } else {
-                sprintf(buf, "%s = %s;\n", s->temp, expr_temp);
-                strcat(instrucoes, buf);
-                char* c_out = (char*) malloc(256);
-                sprintf(c_out, "%s = %s;\n", s->nome, expr_c);
-                $$.c_expr = c_out;
-            }
-        }
+        Simbolo *s = inserir($2, $<info>1.tipo_val, escopo_atual);
+        sprintf(buf, "%s = %s;\n", s->temp, $4.temp);
+        strcat(instrucoes, buf);
+        char* c_out = (char*) malloc(256);
+        sprintf(c_out, "%s = %s;\n", s->temp, $4.temp);
+        $$.c_expr = c_out;
     }
     | tipo ID '[' NUM_INT ']' {
-        int tam = atoi($4);
-        inserir_array($2, $<info>1.tipo_val, escopo_atual, tam);
+        inserir_array($2, $<info>1.tipo_val, escopo_atual, atoi($4));
         $$.c_expr = strdup("");
     }
-    | tipo ID '[' NUM_INT ']' ASSIGN {
-        int tam = atoi($4);
-        simbolo_array_atual = inserir_array($2, $<info>1.tipo_val, escopo_atual, tam);
+    | tipo ID '[' NUM_INT ']' ASSIGN '{' {
+        simbolo_array_atual = inserir_array($2, $<info>1.tipo_val, escopo_atual, atoi($4));
         idx_array_atual = 0;
-        tam_array_atual = tam;
-    } '{' lista_inicializadores '}' {
-        if (idx_array_atual < tam_array_atual) {
-            yyerror("Erro Semantico: Elementos insuficientes na inicializacao da matriz.");
-        }
+        tam_array_atual = atoi($4);
+    } lista_inicializadores '}' {
         $$.c_expr = strdup("");
     }
     ;
 
-lista_inicializadores
+lista_inicializadores 
     : elemento_inicializador ',' lista_inicializadores
     | elemento_inicializador
     ;
 
-elemento_inicializador
+elemento_inicializador 
     : expressao {
-        if (simbolo_array_atual != NULL) {
+        if (simbolo_array_atual) {
             if (idx_array_atual < tam_array_atual) {
-                char* expr_temp = $1.temp;
-                if (simbolo_array_atual->tipo == T_FLOAT && $1.tipo_val == T_INT) {
-                    expr_temp = gerar_cast($1.temp, T_FLOAT);
-                } else if (simbolo_array_atual->tipo == T_INT && $1.tipo_val == T_FLOAT) {
-                    expr_temp = gerar_cast($1.temp, T_INT);
-                }
-                sprintf(buf, "%s[%d] = %s;\n", simbolo_array_atual->temp, idx_array_atual, expr_temp);
+                sprintf(buf, "%s[%d] = %s;\n", simbolo_array_atual->temp, idx_array_atual, $1.temp);
                 strcat(instrucoes, buf);
                 idx_array_atual++;
             } else {
-                yyerror("Erro Semantico: Excesso de elementos na inicializacao da matriz.");
+                yyerror("Erro Semantico: Excesso de elementos na matriz.");
             }
         }
     }
@@ -362,374 +598,45 @@ elemento_inicializador
 atribuicao 
     : ID ASSIGN expressao {
         Simbolo *s = buscar($1);
-        if (s == NULL) {
-            yyerror("Erro Semantico: Variavel nao declarada.");
-            $$.c_expr = strdup("");
-        } else {
-            char* expr_temp = $3.temp;
-            char* expr_c = $3.c_expr;
-            if (s->tipo == T_FLOAT && $3.tipo_val == T_INT) {
-                expr_temp = gerar_cast($3.temp, T_FLOAT);
-                char* cast_c = (char*) malloc(strlen($3.c_expr) + 20);
-                sprintf(cast_c, "(float)(%s)", $3.c_expr);
-                expr_c = cast_c;
-            } else if (s->tipo == T_INT && $3.tipo_val == T_FLOAT) {
-                expr_temp = gerar_cast($3.temp, T_INT);
-                char* cast_c = (char*) malloc(strlen($3.c_expr) + 20);
-                sprintf(cast_c, "(int)(%s)", $3.c_expr);
-                expr_c = cast_c;
-            }
-            if (s->tipo == T_STRING) {
-                sprintf(buf, "strcpy(%s, %s);\n", s->temp, expr_temp);
-                strcat(instrucoes, buf);
-                char* c_out = (char*) malloc(256);
-                sprintf(c_out, "strcpy(%s, %s);\n", s->nome, expr_c);
-                $$.c_expr = c_out;
-            } else {
-                sprintf(buf, "%s = %s;\n", s->temp, expr_temp);
-                strcat(instrucoes, buf);
-                char* c_out = (char*) malloc(256);
-                sprintf(c_out, "%s = %s;\n", s->nome, expr_c);
-                $$.c_expr = c_out;
-            }
-        }
-    }
-    | ID PLUS_ASSIGN expressao  { /* omitido por brevidade */ $$.c_expr = strdup(""); }
-    | ID MINUS_ASSIGN expressao { /* omitido por brevidade */ $$.c_expr = strdup(""); }
-    | ID MULT_ASSIGN expressao  { /* omitido por brevidade */ $$.c_expr = strdup(""); }
-    | ID DIV_ASSIGN expressao   { /* omitido por brevidade */ $$.c_expr = strdup(""); }
-    | ID '[' expressao ']' ASSIGN expressao {
-        Simbolo *s = buscar($1);
-        if (s == NULL) {
-            yyerror("Erro Semantico: Matriz nao declarada.");
-            $$.c_expr = strdup("");
-        } else if (!s->array) {
-            yyerror("Erro Semantico: Identificador nao eh uma matriz.");
-            $$.c_expr = strdup("");
-        } else {
-            char* expr_temp = $6.temp;
-            char* expr_c = $6.c_expr;
-            if (s->tipo == T_FLOAT && $6.tipo_val == T_INT) {
-                expr_temp = gerar_cast($6.temp, T_FLOAT);
-                char* cast_c = (char*) malloc(strlen($6.c_expr) + 20);
-                sprintf(cast_c, "(float)(%s)", $6.c_expr);
-                expr_c = cast_c;
-            } else if (s->tipo == T_INT && $6.tipo_val == T_FLOAT) {
-                expr_temp = gerar_cast($6.temp, T_INT);
-                char* cast_c = (char*) malloc(strlen($6.c_expr) + 20);
-                sprintf(cast_c, "(int)(%s)", $6.c_expr);
-                expr_c = cast_c;
-            }
-            sprintf(buf, "%s[%s] = %s;\n", s->temp, $3.temp, expr_temp);
+        if (!s) yyerror("Erro Semantico: Variavel nao declarada.");
+        else {
+            sprintf(buf, "%s = %s;\n", s->temp, $3.temp);
             strcat(instrucoes, buf);
-            char* c_out = (char*) malloc(256);
-            sprintf(c_out, "%s[%s] = %s;\n", s->nome, $3.c_expr, expr_c);
-            $$.c_expr = c_out;
         }
-    }
-    ;
-
-condicao_if 
-    : TOKEN_IF '(' expressao ')' bloco {
-        char *l_false = novo_label();
-        sprintf(buf, "if (!%s) goto %s;\n", $3.temp, l_false);
-        strcat(instrucoes, buf);
-        
-        char *c_out = (char*) malloc(strlen($3.c_expr) + strlen($5.c_expr) + 200);
-        sprintf(c_out, "if (%s) {\n%s}\n", $3.c_expr, $5.c_expr);
-        
-        sprintf(buf, "%s:\n", l_false);
-        strcat(instrucoes, buf);
+        char* c_out = (char*) malloc(256);
+        sprintf(c_out, "%s = %s;\n", s ? s->temp : $1, $3.temp);
         $$.c_expr = c_out;
     }
-    | TOKEN_IF '(' expressao ')' bloco TOKEN_ELSE bloco {
-        char *l_false = novo_label();
-        char *l_fim = novo_label();
-        sprintf(buf, "if (!%s) goto %s;\n", $3.temp, l_false);
-        strcat(instrucoes, buf);
-        
-        char *c_out = (char*) malloc(strlen($3.c_expr) + strlen($5.c_expr) + strlen($7.c_expr) + 300);
-        sprintf(c_out, "if (%s) {\n%s} else {\n%s}\n", $3.c_expr, $5.c_expr, $7.c_expr);
-        
-        sprintf(buf, "goto %s;\n%s:\n", l_fim, l_false);
-        strcat(instrucoes, buf);
-        
-        sprintf(buf, "%s:\n", l_fim);
-        strcat(instrucoes, buf);
-        $$.c_expr = c_out;
-    }
-    ;
-
-laco_while 
-    : TOKEN_WHILE {
-        char *l_inicio = novo_label();
-        char *l_fim = novo_label();
-        strcpy(pilha_inicio[topo_laco], l_inicio);
-        strcpy(pilha_fim[topo_laco], l_fim);
-        topo_laco++;
-        sprintf(buf, "%s:\n", l_inicio);
-        strcat(instrucoes, buf);
-        $<valor_str>$ = l_inicio;
-    } '(' expressao ')' bloco {
-        char *l_inicio = $<valor_str>2;
-        char *l_fim = pilha_fim[topo_laco - 1];
-        sprintf(buf, "if (!%s) goto %s;\n", $4.temp, l_fim);
-        strcat(instrucoes, buf);
-        
-        char *c_out = (char*) malloc(strlen($4.c_expr) + strlen($6.c_expr) + 200);
-        sprintf(c_out, "while (%s) {\n%s}\n", $4.c_expr, $6.c_expr);
-        
-        sprintf(buf, "goto %s;\n%s:\n", l_inicio, l_fim);
-        strcat(instrucoes, buf);
-        topo_laco--;
-        $$.c_expr = c_out;
-    }
-    ;
-
-laco_do_while 
-    : TOKEN_DO {
-        char *l_inicio = novo_label();
-        char *l_fim = novo_label();
-        strcpy(pilha_inicio[topo_laco], l_inicio);
-        strcpy(pilha_fim[topo_laco], l_fim);
-        topo_laco++;
-        sprintf(buf, "%s:\n", l_inicio);
-        strcat(instrucoes, buf);
-        $<valor_str>$ = l_inicio;
-    } bloco TOKEN_WHILE '(' expressao ')' {
-        char *l_inicio = $<valor_str>2;
-        char *l_fim = pilha_fim[topo_laco - 1];
-        sprintf(buf, "if (%s) goto %s;\n%s:\n", $6.temp, l_inicio, l_fim);
-        strcat(instrucoes, buf);
-        
-        char *c_out = (char*) malloc(strlen($3.c_expr) + strlen($6.c_expr) + 200);
-        sprintf(c_out, "do {\n%s} while (%s);\n", $3.c_expr, $6.c_expr);
-        topo_laco--;
-        $$.c_expr = c_out;
-    }
-    ;
-
-laco_for 
-    : TOKEN_FOR '(' atribuicao ';' {
-        char *l_inicio = novo_label();
-        char *l_fim = novo_label();
-        strcpy(pilha_inicio[topo_laco], l_inicio);
-        strcpy(pilha_fim[topo_laco], l_fim);
-        topo_laco++;
-        sprintf(buf, "%s:\n", l_inicio);
-        strcat(instrucoes, buf);
-        $<valor_str>$ = l_inicio;
-    } expressao ';' {
-        char *l_corpo = novo_label();
-        char *l_fim = pilha_fim[topo_laco - 1];
-        sprintf(buf, "if (%s) goto %s;\ngoto %s;\n%s:\n", $6.temp, l_corpo, l_fim, l_corpo);
-        strcat(instrucoes, buf);
-        $<valor_str>$ = l_corpo;
-    } atribuicao ')' { escopo_atual++; } comandos_bloco '}' {
-        remover_simbolos_do_nivel(escopo_atual);
-        escopo_atual--;
-        char *l_inicio = $<valor_str>5;
-        char *l_fim = pilha_fim[topo_laco - 1];
-        sprintf(buf, "goto %s;\n%s:\n", l_inicio, l_fim);
-        strcat(instrucoes, buf);
-        
-        char *c_out = (char*) malloc(strlen($3.c_expr) + strlen($6.c_expr) + strlen($9.c_expr) + strlen($12.c_expr) + 300);
-        sprintf(c_out, "for (%s; %s; %s) {\n%s}\n", $3.c_expr, $6.c_expr, $9.c_expr, $12.c_expr);
-        topo_laco--;
-        $$.c_expr = c_out;
-    }
-    ;
-
-estrutura_switch 
-    : TOKEN_SWITCH '(' expressao ')' {
-        dentro_switch = 1;
-        char *l_fim = novo_label();
-        strcpy(switch_fim, l_fim);
-        strcpy(switch_exp, $3.temp);
-    } '{' casos caso_default '}' {
-        sprintf(buf, "%s:\n", switch_fim);
-        strcat(instrucoes, buf);
-        dentro_switch = 0;
-        
-        char *c_out = (char*) malloc(strlen($3.c_expr) + strlen($7.c_expr) + strlen($8.c_expr) + 200);
-        sprintf(c_out, "switch (%s) {\n%s%s}\n", $3.c_expr, $7.c_expr, $8.c_expr);
-        $$.c_expr = c_out;
-    }
-    ;
-
-casos 
-    : TOKEN_CASE expressao ':' {
-        char *l_prox = novo_label();
-        char *t_cmp = novo_temp(T_BOOL);
-        sprintf(buf, "%s = %s == %s;\nif (!%s) goto %s;\n", t_cmp, switch_exp, $2.temp, t_cmp, l_prox);
-        strcat(instrucoes, buf);
-        $<valor_str>$ = l_prox;
-    } comandos casos {
-        char *l_prox = $<valor_str>4;
-        sprintf(buf, "%s:\n", l_prox);
-        strcat(instrucoes, buf);
-        
-        char *c_out = (char*) malloc(strlen($2.c_expr) + strlen($5.c_expr) + strlen($6.c_expr) + 100);
-        sprintf(c_out, "case %s:\n%s%s", $2.c_expr, $5.c_expr, $6.c_expr);
-        $$.c_expr = c_out;
-    }
-    | /* vazio */ { $$.c_expr = strdup(""); }
-    ;
-
-caso_default 
-    : TOKEN_DEFAULT ':' comandos {
-        char *c_out = (char*) malloc(strlen($3.c_expr) + 50);
-        sprintf(c_out, "default:\n%s", $3.c_expr);
-        $$.c_expr = c_out;
-    }
-    | /* vazio */ { $$.c_expr = strdup(""); }
     ;
 
 expressao 
     : expressao PLUS expressao {
-        int t_res = ($1.tipo_val == T_FLOAT || $3.tipo_val == T_FLOAT) ? T_FLOAT : T_INT;
-        char *t = novo_temp(t_res);
-        char *e1 = $1.temp, *e2 = $3.temp;
-        if (t_res == T_FLOAT && $1.tipo_val == T_INT) e1 = gerar_cast($1.temp, T_FLOAT);
-        if (t_res == T_FLOAT && $3.tipo_val == T_INT) e2 = gerar_cast($3.temp, T_FLOAT);
-        sprintf(buf, "%s = %s + %s;\n", t, e1, e2);
+        char *t = novo_temp(T_INT);
+        sprintf(buf, "%s = %s + %s;\n", t, $1.temp, $3.temp);
         strcat(instrucoes, buf);
         $$.temp = t;
-        $$.tipo_val = t_res;
-        char *c_out = (char*) malloc(strlen($1.c_expr) + strlen($3.c_expr) + 10);
-        sprintf(c_out, "%s + %s", $1.c_expr, $3.c_expr);
-        $$.c_expr = c_out;
+        $$.tipo_val = T_INT;
     }
     | expressao '-' expressao {
-        int t_res = ($1.tipo_val == T_FLOAT || $3.tipo_val == T_FLOAT) ? T_FLOAT : T_INT;
-        char *t = novo_temp(t_res);
-        char *e1 = $1.temp, *e2 = $3.temp;
-        if (t_res == T_FLOAT && $1.tipo_val == T_INT) e1 = gerar_cast($1.temp, T_FLOAT);
-        if (t_res == T_FLOAT && $3.tipo_val == T_INT) e2 = gerar_cast($3.temp, T_FLOAT);
-        sprintf(buf, "%s = %s - %s;\n", t, e1, e2);
+        char *t = novo_temp(T_INT);
+        sprintf(buf, "%s = %s - %s;\n", t, $1.temp, $3.temp);
         strcat(instrucoes, buf);
         $$.temp = t;
-        $$.tipo_val = t_res;
-        char *c_out = (char*) malloc(strlen($1.c_expr) + strlen($3.c_expr) + 10);
-        sprintf(c_out, "%s - %s", $1.c_expr, $3.c_expr);
-        $$.c_expr = c_out;
+        $$.tipo_val = T_INT;
     }
     | expressao '*' expressao {
-        int t_res = ($1.tipo_val == T_FLOAT || $3.tipo_val == T_FLOAT) ? T_FLOAT : T_INT;
-        char *t = novo_temp(t_res);
-        char *e1 = $1.temp, *e2 = $3.temp;
-        if (t_res == T_FLOAT && $1.tipo_val == T_INT) e1 = gerar_cast($1.temp, T_FLOAT);
-        if (t_res == T_FLOAT && $3.tipo_val == T_INT) e2 = gerar_cast($3.temp, T_FLOAT);
-        sprintf(buf, "%s = %s * %s;\n", t, e1, e2);
+        char *t = novo_temp(T_INT);
+        sprintf(buf, "%s = %s * %s;\n", t, $1.temp, $3.temp);
         strcat(instrucoes, buf);
         $$.temp = t;
-        $$.tipo_val = t_res;
-        char *c_out = (char*) malloc(strlen($1.c_expr) + strlen($3.c_expr) + 10);
-        sprintf(c_out, "%s * %s", $1.c_expr, $3.c_expr);
-        $$.c_expr = c_out;
+        $$.tipo_val = T_INT;
     }
     | expressao '/' expressao {
-        int t_res = ($1.tipo_val == T_FLOAT || $3.tipo_val == T_FLOAT) ? T_FLOAT : T_INT;
-        char *t = novo_temp(t_res);
-        char *e1 = $1.temp, *e2 = $3.temp;
-        if (t_res == T_FLOAT && $1.tipo_val == T_INT) e1 = gerar_cast($1.temp, T_FLOAT);
-        if (t_res == T_FLOAT && $3.tipo_val == T_INT) e2 = gerar_cast($3.temp, T_FLOAT);
-        sprintf(buf, "%s = %s / %s;\n", t, e1, e2);
+        char *t = novo_temp(T_INT);
+        sprintf(buf, "%s = %s / %s;\n", t, $1.temp, $3.temp);
         strcat(instrucoes, buf);
         $$.temp = t;
-        $$.tipo_val = t_res;
-        char *c_out = (char*) malloc(strlen($1.c_expr) + strlen($3.c_expr) + 10);
-        sprintf(c_out, "%s / %s", $1.c_expr, $3.c_expr);
-        $$.c_expr = c_out;
-    }
-    | expressao LE expressao {
-        char *t = novo_temp(T_BOOL);
-        sprintf(buf, "%s = %s <= %s;\n", t, $1.temp, $3.temp);
-        strcat(instrucoes, buf);
-        $$.temp = t; $$.tipo_val = T_BOOL;
-        char *c_out = (char*) malloc(strlen($1.c_expr) + strlen($3.c_expr) + 10);
-        sprintf(c_out, "%s <= %s", $1.c_expr, $3.c_expr); $$.c_expr = c_out;
-    }
-    | expressao GE expressao {
-        char *t = novo_temp(T_BOOL);
-        sprintf(buf, "%s = %s >= %s;\n", t, $1.temp, $3.temp);
-        strcat(instrucoes, buf);
-        $$.temp = t; $$.tipo_val = T_BOOL;
-        char *c_out = (char*) malloc(strlen($1.c_expr) + strlen($3.c_expr) + 10);
-        sprintf(c_out, "%s >= %s", $1.c_expr, $3.c_expr); $$.c_expr = c_out;
-    }
-    | expressao EQ expressao {
-        char *t = novo_temp(T_BOOL);
-        sprintf(buf, "%s = %s == %s;\n", t, $1.temp, $3.temp);
-        strcat(instrucoes, buf);
-        $$.temp = t; $$.tipo_val = T_BOOL;
-        char *c_out = (char*) malloc(strlen($1.c_expr) + strlen($3.c_expr) + 10);
-        sprintf(c_out, "%s == %s", $1.c_expr, $3.c_expr); $$.c_expr = c_out;
-    }
-    | expressao NE expressao {
-        char *t = novo_temp(T_BOOL);
-        sprintf(buf, "%s = %s != %s;\n", t, $1.temp, $3.temp);
-        strcat(instrucoes, buf);
-        $$.temp = t; $$.tipo_val = T_BOOL;
-        char *c_out = (char*) malloc(strlen($1.c_expr) + strlen($3.c_expr) + 10);
-        sprintf(c_out, "%s != %s", $1.c_expr, $3.c_expr); $$.c_expr = c_out;
-    }
-    | expressao '<' expressao {
-        char *t = novo_temp(T_BOOL);
-        sprintf(buf, "%s = %s < %s;\n", t, $1.temp, $3.temp);
-        strcat(instrucoes, buf);
-        $$.temp = t; $$.tipo_val = T_BOOL;
-        char *c_out = (char*) malloc(strlen($1.c_expr) + strlen($3.c_expr) + 10);
-        sprintf(c_out, "%s < %s", $1.c_expr, $3.c_expr); $$.c_expr = c_out;
-    }
-    | expressao '>' expressao {
-        char *t = novo_temp(T_BOOL);
-        sprintf(buf, "%s = %s > %s;\n", t, $1.temp, $3.temp);
-        strcat(instrucoes, buf);
-        $$.temp = t; $$.tipo_val = T_BOOL;
-        char *c_out = (char*) malloc(strlen($1.c_expr) + strlen($3.c_expr) + 10);
-        sprintf(c_out, "%s > %s", $1.c_expr, $3.c_expr); $$.c_expr = c_out;
-    }
-    | expressao AND expressao {
-        char *t = novo_temp(T_BOOL);
-        sprintf(buf, "%s = %s && %s;\n", t, $1.temp, $3.temp);
-        strcat(instrucoes, buf);
-        $$.temp = t; $$.tipo_val = T_BOOL;
-        char *c_out = (char*) malloc(strlen($1.c_expr) + strlen($3.c_expr) + 10);
-        sprintf(c_out, "%s && %s", $1.c_expr, $3.c_expr); $$.c_expr = c_out;
-    }
-    | expressao OR expressao {
-        char *t = novo_temp(T_BOOL);
-        sprintf(buf, "%s = %s || %s;\n", t, $1.temp, $3.temp);
-        strcat(instrucoes, buf);
-        $$.temp = t; $$.tipo_val = T_BOOL;
-        char *c_out = (char*) malloc(strlen($1.c_expr) + strlen($3.c_expr) + 10);
-        sprintf(c_out, "%s || %s", $1.c_expr, $3.c_expr); $$.c_expr = c_out;
-    }
-    | NOT expressao {
-        char *t = novo_temp(T_BOOL);
-        sprintf(buf, "%s = !%s;\n", t, $2.temp);
-        strcat(instrucoes, buf);
-        $$.temp = t; $$.tipo_val = T_BOOL;
-        char *c_out = (char*) malloc(strlen($2.c_expr) + 5);
-        sprintf(c_out, "!%s", $2.c_expr); $$.c_expr = c_out;
-    }
-    | '-' expressao %prec UMINUS {
-        char *t = novo_temp($2.tipo_val);
-        sprintf(buf, "%s = -%s;\n", t, $2.temp);
-        strcat(instrucoes, buf);
-        $$.temp = t; $$.tipo_val = $2.tipo_val;
-        char *c_out = (char*) malloc(strlen($2.c_expr) + 5);
-        sprintf(c_out, "-%s", $2.c_expr); $$.c_expr = c_out;
-    }
-    | '(' tipo ')' expressao %prec CAST {
-        char *t = novo_temp($<info>2.tipo_val);
-        const char* s_tipo = ($<info>2.tipo_val == T_FLOAT) ? "float" : "int";
-        sprintf(buf, "%s = (%s) %s;\n", t, s_tipo, $4.temp);
-        strcat(instrucoes, buf);
-        $$.temp = t; $$.tipo_val = $<info>2.tipo_val;
-        char *c_out = (char*) malloc(strlen($4.c_expr) + 20);
-        sprintf(c_out, "(%s)(%s)", s_tipo, $4.c_expr); $$.c_expr = c_out;
+        $$.tipo_val = T_INT;
     }
     | termo { $$ = $1; }
     ;
@@ -741,112 +648,51 @@ termo
 fator 
     : ID {
         Simbolo *s = buscar($1);
-        if (s == NULL) {
-            yyerror("Erro Semantico: Variavel nao declarada.");
-            $$.temp = strdup("0"); $$.tipo_val = T_INT; $$.c_expr = strdup("0");
+        if (!s) {
+            yyerror("Erro Semantico: Identificador nao encontrado.");
+            $$.temp = strdup("0");
         } else {
-            $$.temp = s->temp; $$.tipo_val = s->tipo; $$.c_expr = s->nome;
+            $$.temp = s->temp;
+            $$.tipo_val = s->tipo;
         }
     }
     | NUM_INT {
         char *t = novo_temp(T_INT);
         sprintf(buf, "%s = %s;\n", t, $1);
         strcat(instrucoes, buf);
-        $$.temp = t; $$.tipo_val = T_INT; $$.c_expr = $1;
-    }
-    | NUM_FLOAT {
-        char *t = novo_temp(T_FLOAT);
-        sprintf(buf, "%s = %s;\n", t, $1);
-        strcat(instrucoes, buf);
-        $$.temp = t; $$.tipo_val = T_FLOAT; $$.c_expr = $1;
-    }
-    | CHAR_LIT {
-        char *t = novo_temp(T_CHAR);
-        sprintf(buf, "%s = %s;\n", t, $1);
-        strcat(instrucoes, buf);
-        $$.temp = t; $$.tipo_val = T_CHAR; $$.c_expr = $1;
-    }
-    | STRING_LIT {
-        int tam = strlen($1) - 2 + 1; // desconta aspas e conta \0
-        char *t = novo_temp_str(tam);
-        sprintf(buf, "strcpy(%s, %s);\n", t, $1);
-        strcat(instrucoes, buf);
-        $$.temp = t; $$.tipo_val = T_STRING; $$.c_expr = $1;
-    }
-    | BOOL_LIT {
-        char *t = novo_temp(T_BOOL);
-        sprintf(buf, "%s = %s;\n", t, strcmp($1,"true")==0 ? "1" : "0");
-        strcat(instrucoes, buf);
-        $$.temp = t; $$.tipo_val = T_BOOL; $$.c_expr = strcmp($1,"true")==0 ? "true" : "false";
+        $$.temp = t;
+        $$.tipo_val = T_INT;
     }
     | '(' expressao ')' {
-        $$.temp = $2.temp; $$.tipo_val = $2.tipo_val;
-        char *c_out = (char*) malloc(strlen($2.c_expr) + 5);
-        sprintf(c_out, "(%s)", $2.c_expr); $$.c_expr = c_out;
-    }
-    | ID '[' expressao ']' {
-        Simbolo *s = buscar($1);
-        if (s == NULL) {
-            yyerror("Erro Semantico: Matriz nao declarada.");
-            $$.temp = strdup("0"); $$.tipo_val = T_INT; $$.c_expr = strdup("0");
-        } else if (!s->array) {
-            yyerror("Erro Semantico: O identificador nao eh uma matriz.");
-            $$.temp = strdup("0"); $$.tipo_val = T_INT; $$.c_expr = strdup("0");
-        } else {
-            char *t = novo_temp(s->tipo);
-            sprintf(buf, "%s = %s[%s];\n", t, s->temp, $3.temp);
-            strcat(instrucoes, buf);
-            $$.temp = t; $$.tipo_val = s->tipo;
-            char *c_out = (char*) malloc(strlen(s->nome) + strlen($3.c_expr) + 5);
-            sprintf(c_out, "%s[%s]", s->nome, $3.c_expr); $$.c_expr = c_out;
-        }
+        $$ = $2;
     }
     | ID '(' chamada_argumentos ')' {
-        // Regra para Chamada de Funções como Expressões
         Simbolo *s = buscar($1);
-        if (s == NULL || !s->eh_funcao) {
-            yyerror("Erro Semantico: Funcao nao declarada.");
-            $$.temp = strdup("0"); $$.tipo_val = T_INT; $$.c_expr = strdup("0");
-        } else {
-            char *t = novo_temp(s->tipo);
-            $$.temp = t;
-            $$.tipo_val = s->tipo;
-            
-            // Grava no Código Intermediário de 3 Endereços (TAC)
-            sprintf(buf, "%s = %s(%s);\n", t, s->temp, $3.temp);
-            strcat(instrucoes, buf);
-            
-            // Grava na expressão traduzida de C
-            char *c_out = (char*) malloc(strlen(s->nome) + strlen($3.c_expr) + 5);
-            sprintf(c_out, "%s(%s)", s->nome, $3.c_expr);
-            $$.c_expr = c_out;
-        }
+        char *t = novo_temp(T_INT);
+        sprintf(buf, "%s = %s(%s);\n", t, $1, $3.temp);
+        strcat(instrucoes, buf);
+        $$.temp = t;
+        $$.tipo_val = T_INT;
     }
     ;
 
 chamada_argumentos
     : chamada_argumentos_lista { $$ = $1; }
-    | /* vazio */ { $$.temp = strdup(""); $$.c_expr = strdup(""); }
+    | /* vazio */ { $$.temp = strdup(""); }
     ;
 
 chamada_argumentos_lista
-    : expressao { 
-        $$.temp = strdup($1.temp); 
-        $$.c_expr = strdup($1.c_expr); 
-    }
+    : expressao { $$.temp = strdup($1.temp); }
     | expressao ',' chamada_argumentos_lista {
         char *t_buf = (char*) malloc(strlen($1.temp) + strlen($3.temp) + 5);
-        char *c_buf = (char*) malloc(strlen($1.c_expr) + strlen($3.c_expr) + 5);
         sprintf(t_buf, "%s, %s", $1.temp, $3.temp);
-        sprintf(c_buf, "%s, %s", $1.c_expr, $3.c_expr);
         $$.temp = t_buf;
-        $$.c_expr = c_buf;
     }
     ;
 
 %%
 
-#include <stdlib.h> // Necessário para a função system()
+#include <stdlib.h> 
 
 int main() {
     yyparse();
@@ -856,47 +702,26 @@ int main() {
 
     gerar_declaracoes_finais();
 
-    /* 1. VISUALIZAÇÃO DO CÓDIGO INTERMEDIÁRIO (Terminal) */
+    /* 1. IMPRESSÃO NO TERMINAL */
     printf("#include <stdio.h>\n");
     printf("#include <stdlib.h>\n");
     printf("#include <string.h>\n");
     printf("#include <stdbool.h>\n\n");
-
-    // Imprime definições de funções globais fora da main no terminal
+    printf("%s\n", c_code_decl);
     printf("%s", c_code_body);
+    printf("int main()\n{\n");
+    printf("%s\n", c_body);
+    printf("    return 0;\n}\n");
 
-    printf("int main()\n");
-    printf("{\n");
-    printf("%s\n", declaracoes);
-    printf("%s", instrucoes);
-    printf("    return 0;\n");
-    printf("}\n");
-
-    /* 2. GERAÇÃO DO CÓDIGO (Arquivo saida.c) */
+    /* 2. SALVANDO NO ARQUIVO SAIDA.C */
     FILE *arquivo_c = fopen("saida.c", "w");
-    if (!arquivo_c) {
-        printf("Erro: Nao foi possivel criar o arquivo saida.c\n");
-        return 1;
-    }
-
-    fprintf(arquivo_c, "#include <stdio.h>\n");
-    fprintf(arquivo_c, "#include <stdlib.h>\n");
-    fprintf(arquivo_c, "#include <string.h>\n");
-    fprintf(arquivo_c, "#include <stdbool.h>\n\n");
-
-    // Imprime as declarações dos temporários da tabela de símbolos
+    if (!arquivo_c) return 1;
+    fprintf(arquivo_c, "#include <stdio.h>\n#include <stdlib.h>\n#include <string.h>\n#include <stdbool.h>\n\n");
     fprintf(arquivo_c, "%s\n", c_code_decl);
-
-    // Grava o corpo das funções globais criadas antes da main()
     fprintf(arquivo_c, "%s", c_code_body);
-
-    fprintf(arquivo_c, "int main()\n");
-    fprintf(arquivo_c, "{\n");
-    // Caso existam instruções internas soltas da main
+    fprintf(arquivo_c, "int main()\n{\n");
     fprintf(arquivo_c, "%s", c_body);
-    fprintf(arquivo_c, "    return 0;\n");
-    fprintf(arquivo_c, "}\n");
-
+    fprintf(arquivo_c, "    return 0;\n}\n");
     fclose(arquivo_c);
     return 0;
 }
