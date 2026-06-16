@@ -1,6 +1,4 @@
 main() {
-    int oculos[3] = {10, 20, 30};
-    print(oculos[0]);
-    print(oculos[1]);
-    print(oculos[2]);
+    string nome = "Teste ";
+    print(nome);
 }

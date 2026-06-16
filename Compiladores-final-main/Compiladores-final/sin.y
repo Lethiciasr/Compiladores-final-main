@@ -376,14 +376,16 @@ comando : declaracao ';'
             // 1. Marca visualmente no 3AC que é um FOR
             strcat(instrucoes, "\n");
             char* l_inicio = novo_label();
-            char* l_incremento = novo_label(); // NOVO RÓTULO: Para o incremento!
+            
+            // [REMOVIDO] char* l_incremento = novo_label(); 
             
             sprintf(buf, "%s:\n", l_inicio);
             strcat(instrucoes, buf);
-            $<valor_str>$ = l_inicio; // Salva o início (condicional) na posição $5
+            $<valor_str>$ = l_inicio;
             
-            // ALTERAÇÃO: Salva o rótulo do INCREMENTO na pilha para o 'continue' pular pra cá
-            strcpy(pilha_inicio[topo_laco], l_incremento);
+            // ALTERAÇÃO: Como não há mais l_incremento, o 'continue' 
+            // terá que pular para o início do laço.
+            strcpy(pilha_inicio[topo_laco], l_inicio);
             
         } expressao ';' {
             // 2. Verifica a CONDIÇÃO
@@ -420,19 +422,16 @@ comando : declaracao ';'
             // 4. Chegamos no final do laço!
             topo_laco--; // Desce a pilha de laços
             
-            // --- NOVO PASSO: Imprime o rótulo do INCREMENTO aqui ---
-            // Recuperamos o l_incremento lendo a própria pilha_inicio!
-            sprintf(buf, "%s:\n", pilha_inicio[topo_laco]);
-            strcat(instrucoes, buf);
+            // [REMOVIDO] O sprintf que imprimia o pilha_inicio (L2) foi apagado aqui!
             
-            // Imprime o incremento do 3AC que estava guardado
+            // Imprime o incremento do 3AC que estava guardado direto
             strcat(instrucoes, inc_3ac);
             
             // Pula de volta pro início (A condicional no $5) no 3AC
             sprintf(buf, "goto %s;\n", $<valor_str>5);
             strcat(instrucoes, buf);
             
-            // Marca o rótulo de FIM no 3AC
+            // Marca o rótulo de FIM (L3 que agora será equivalente ao L2) no 3AC
             sprintf(buf, "%s:\n", $<valor_str>8);
             strcat(instrucoes, buf);
             strcat(instrucoes, "\n");
