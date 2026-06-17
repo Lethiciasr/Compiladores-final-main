@@ -93,8 +93,10 @@ extern int yydebug;
     DIV_ASSIGN = 294,              /* DIV_ASSIGN  */
     INC = 295,                     /* INC  */
     DEC = 296,                     /* DEC  */
-    CAST = 297,                    /* CAST  */
-    UMINUS = 298                   /* UMINUS  */
+    TOKEN_VOID = 297,              /* TOKEN_VOID  */
+    TOKEN_RETURN = 298,            /* TOKEN_RETURN  */
+    CAST = 299,                    /* CAST  */
+    UMINUS = 300                   /* UMINUS  */
   };
   typedef enum yytokentype yytoken_kind_t;
 #endif
@@ -103,7 +105,7 @@ extern int yydebug;
 #if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
 union YYSTYPE
 {
-#line 40 "sin.y"
+#line 42 "sin.y"
 
     char* valor_str;
     struct {
@@ -113,7 +115,7 @@ union YYSTYPE
         int tam_str;
     } info;
 
-#line 117 "sin.tab.h"
+#line 119 "sin.tab.h"
 
 };
 typedef union YYSTYPE YYSTYPE;

@@ -99,6 +99,7 @@ Simbolo* inserir(char *nome, Tipo tipo, int nivel) {
     strcpy(novo->temp, nome_t); 
     free(nome_t); 
     novo->tipo = tipo;
+    novo->cat = C_VAR;
     novo->nivel = nivel;
     novo->proximo = tabela_global;
     novo->array = 0;
@@ -121,10 +122,29 @@ Simbolo* inserir_array(char *nome, Tipo tipo, int nivel, int tamanho) {
     free(nome_t); 
     
     novo->tipo = tipo;
+    novo->cat = C_VAR;
     novo->nivel = nivel;
     novo->proximo = tabela_global;
     novo->array = 1;
     novo->tamanho_array = tamanho;
+    
+    tabela_global = novo;
+    return novo;
+}
+
+Simbolo* inserir_funcao(char *nome, Tipo tipo, int nivel) { 
+    Simbolo *novo = (Simbolo*) malloc(sizeof(Simbolo));
+    strcpy(novo->nome, nome);
+    
+    // Funções geralmente usam o próprio nome como label no TAC/Assembly
+    strcpy(novo->temp, nome); 
+    
+    novo->tipo = tipo;
+    novo->cat = C_FUNC;
+    novo->nivel = nivel;
+    novo->array = 0;
+    novo->tamanho_array = 0;
+    novo->proximo = tabela_global;
     
     tabela_global = novo;
     return novo;

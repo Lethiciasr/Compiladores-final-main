@@ -29,6 +29,8 @@
 "true"      { yylval.valor_str = strdup("true"); return BOOL_LIT; }
 "false"     { yylval.valor_str = strdup("false"); return BOOL_LIT; }
 "main"      { return TOKEN_MAIN; }
+"void"      { return TOKEN_VOID; }
+"return"    { return TOKEN_RETURN; }
 
 "&&"        { return AND; }
 "||"        { return OR; }

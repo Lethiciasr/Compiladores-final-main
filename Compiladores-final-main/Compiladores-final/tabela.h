@@ -1,13 +1,16 @@
 #ifndef TABELA_H
 #define TABELA_H
 
-typedef enum { T_INT, T_FLOAT, T_CHAR, T_BOOL, T_STRING } Tipo;
+typedef enum { T_INT, T_FLOAT, T_CHAR, T_BOOL, T_STRING, T_VOID } Tipo;
+
+typedef enum { C_VAR, C_FUNC } Categoria;
 
 // Estrutura do nó da tabela de símbolos (lista encadeada)
 typedef struct Simbolo {
     char nome[50];
-    char temp[10]; //codigo intermediario
+    char temp[50]; //codigo intermediario
     Tipo tipo;
+    Categoria cat;
     int nivel;
     int array;
     int tamanho_array;
@@ -18,6 +21,7 @@ typedef struct Simbolo {
 char* novo_temp(Tipo tipo); // gerar um novo nome de variavel temporaria
 Simbolo* inserir(char *nome, Tipo tipo, int nivel); //add uma nova variavel na tabela quando declarada
 Simbolo* inserir_array(char *nome, Tipo tipo, int nivel, int tamanho);
+Simbolo* inserir_funcao(char *nome, Tipo tipo, int nivel);
 Simbolo* buscar(char *nome); // vê se a variavel ja foi declarada
 void remover_simbolos_do_nivel(int nivel);
 

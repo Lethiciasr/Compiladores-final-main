@@ -22,6 +22,8 @@ char buf[200];
 char c_decl[5000] = "";
 char c_body[5000] = "";
 char declaracoes_temp[5000] = "";
+char instrucoes_funcoes[5000] = "";
+char instrucoes_globais[5000] = "";
 char inc_3ac[200] = "";
 char inc_c[200] = "";   
 char switch_exp[50] = "";
@@ -57,6 +59,7 @@ int escopo_atual = 0;
 %token AND OR EQ NE LE GE NOT
 %token PLUS_ASSIGN MINUS_ASSIGN MULT_ASSIGN DIV_ASSIGN
 %token INC DEC
+%token TOKEN_VOID TOKEN_RETURN
 
 %define parse.error verbose
 
@@ -69,20 +72,247 @@ int escopo_atual = 0;
 %right CAST
 %right UMINUS
 
-%type <info> expressao
+%type <info> expressao parametros parametro argumentos lista_args
 %type <valor_str> if_cond
 %type <valor_str> incremento_for
 %type <valor_str> for_init
 
 %%
 
-programa : declaracoes_globais TOKEN_MAIN '(' ')' bloco
+programa : elementos_globais { 
+        strcpy(instrucoes_globais, instrucoes);
+        instrucoes[0] = '\0';
+    } TOKEN_MAIN '(' ')' bloco
     ;
 
-declaracoes_globais
-    : declaracao ';' declaracoes_globais
-    |
+elementos_globais
+    : elemento_global elementos_globais
+    | 
     ;
+
+elemento_global
+    : declaracao ';'
+    | funcao
+    ;
+
+funcao : TOKEN_VOID ID '(' parametros ')' '{' {
+            // 1. Salva o TAC global gerado até agora e limpa pro corpo da função
+            strcat(instrucoes_globais, instrucoes);
+            instrucoes[0] = '\0'; 
+
+            inserir_funcao($2, T_VOID, escopo_atual);
+            
+            sprintf(buf, "\nvoid %s(%s) {\n", $2, $4.temp);
+            strcat(instrucoes, buf);
+            
+            sprintf(buf, "\nvoid %s(%s) {\n", $2, $4.c_expr);
+            strcat(c_body, buf);
+            
+            escopo_atual++;
+         } comandos_bloco '}' {
+            strcat(instrucoes, "}\n"); 
+            strcat(c_body, "}\n");
+            
+            // 2. Salva a função pronta e limpa para o próximo elemento global
+            strcat(instrucoes_funcoes, instrucoes);
+            instrucoes[0] = '\0'; 
+            
+            remover_simbolos_do_nivel(escopo_atual);
+            escopo_atual--;
+         }
+       | TOKEN_INT ID '(' parametros ')' '{' {
+            // 1. Salva o TAC global gerado até agora e limpa pro corpo da função
+            strcat(instrucoes_globais, instrucoes);
+            instrucoes[0] = '\0'; 
+
+            inserir_funcao($2, T_INT, escopo_atual);
+            
+            sprintf(buf, "\nint %s(%s) {\n", $2, $4.temp);
+            strcat(instrucoes, buf);
+            
+            sprintf(buf, "\nint %s(%s) {\n", $2, $4.c_expr);
+            strcat(c_body, buf);
+            
+            escopo_atual++;
+         } comandos_bloco '}' {
+            strcat(instrucoes, "}\n"); 
+            strcat(c_body, "}\n");
+            
+            // 2. Salva a função pronta e limpa para o próximo elemento global
+            strcat(instrucoes_funcoes, instrucoes);
+            instrucoes[0] = '\0'; 
+            
+            remover_simbolos_do_nivel(escopo_atual);
+            escopo_atual--;
+         }
+         | TOKEN_FLOAT ID '(' parametros ')' '{' {
+            strcat(instrucoes_globais, instrucoes);
+            instrucoes[0] = '\0'; 
+            
+            inserir_funcao($2, T_FLOAT, escopo_atual);
+            
+            sprintf(buf, "\nfloat %s(%s) {\n", $2, $4.temp);
+            strcat(instrucoes, buf);
+            
+            sprintf(buf, "\nfloat %s(%s) {\n", $2, $4.c_expr);
+            strcat(c_body, buf);
+            
+            escopo_atual++;
+         } comandos_bloco '}' {
+            strcat(instrucoes, "}\n"); 
+            strcat(c_body, "}\n");
+            
+            strcat(instrucoes_funcoes, instrucoes);
+            instrucoes[0] = '\0'; 
+            
+            remover_simbolos_do_nivel(escopo_atual);
+            escopo_atual--;
+         }
+         | TOKEN_CHAR ID '(' parametros ')' '{' {
+            strcat(instrucoes_globais, instrucoes);
+            instrucoes[0] = '\0'; 
+            
+            inserir_funcao($2, T_CHAR, escopo_atual);
+            
+            sprintf(buf, "\nchar %s(%s) {\n", $2, $4.temp);
+            strcat(instrucoes, buf);
+            
+            sprintf(buf, "\nchar %s(%s) {\n", $2, $4.c_expr);
+            strcat(c_body, buf);
+            
+            escopo_atual++;
+         } comandos_bloco '}' {
+            strcat(instrucoes, "}\n"); 
+            strcat(c_body, "}\n");
+            
+            strcat(instrucoes_funcoes, instrucoes);
+            instrucoes[0] = '\0'; 
+            
+            remover_simbolos_do_nivel(escopo_atual);
+            escopo_atual--;
+         }
+         | TOKEN_BOOL ID '(' parametros ')' '{' {
+            strcat(instrucoes_globais, instrucoes);
+            instrucoes[0] = '\0'; 
+            
+            inserir_funcao($2, T_BOOL, escopo_atual);
+            
+            sprintf(buf, "\nint %s(%s) {\n", $2, $4.temp);
+            strcat(instrucoes, buf);
+            
+            sprintf(buf, "\nint %s(%s) {\n", $2, $4.c_expr);
+            strcat(c_body, buf);
+            
+            escopo_atual++;
+         } comandos_bloco '}' {
+            strcat(instrucoes, "}\n"); 
+            strcat(c_body, "}\n");
+            
+            strcat(instrucoes_funcoes, instrucoes);
+            instrucoes[0] = '\0'; 
+            
+            remover_simbolos_do_nivel(escopo_atual);
+            escopo_atual--;
+         }
+       | TOKEN_STRING ID '(' parametros ')' '{' {
+            strcat(instrucoes_globais, instrucoes);
+            instrucoes[0] = '\0'; 
+            
+            inserir_funcao($2, T_STRING, escopo_atual);
+            
+            sprintf(buf, "\nchar* %s(%s) {\n", $2, $4.temp);
+            strcat(instrucoes, buf);
+            
+            sprintf(buf, "\nchar* %s(%s) {\n", $2, $4.c_expr);
+            strcat(c_body, buf);
+            
+            escopo_atual++;
+         } comandos_bloco '}' {
+            strcat(instrucoes, "}\n"); 
+            strcat(c_body, "}\n");
+            
+            strcat(instrucoes_funcoes, instrucoes);
+            instrucoes[0] = '\0'; 
+            
+            remover_simbolos_do_nivel(escopo_atual);
+            escopo_atual--;
+         }
+       ;
+
+/* --- REGRAS DE PARÂMETROS (Na Declaração) --- */
+parametros : parametro { $$ = $1; }
+           | parametros ',' parametro {
+                $$.temp = (char*) malloc(strlen($1.temp) + strlen($3.temp) + 5);
+                sprintf($$.temp, "%s, %s", $1.temp, $3.temp);
+
+                $$.c_expr = (char*) malloc(strlen($1.c_expr) + strlen($3.c_expr) + 5);
+                sprintf($$.c_expr, "%s, %s", $1.c_expr, $3.c_expr);
+           }
+           | /* vazio */ { 
+                $$.temp = strdup(""); 
+                $$.c_expr = strdup(""); 
+           }
+           ;
+
+parametro : TOKEN_INT ID {
+                Simbolo* s = inserir($2, T_INT, escopo_atual + 1);
+                $$.temp = (char*) malloc(50);
+                sprintf($$.temp, "int %s", s->temp); 
+                $$.c_expr = (char*) malloc(50);
+                sprintf($$.c_expr, "int %s", s->nome);
+            }
+          | TOKEN_FLOAT ID {
+                Simbolo* s = inserir($2, T_FLOAT, escopo_atual + 1);
+                $$.temp = (char*) malloc(50);
+                sprintf($$.temp, "float %s", s->temp); 
+                $$.c_expr = (char*) malloc(50);
+                sprintf($$.c_expr, "float %s", s->nome);
+            }
+          | TOKEN_STRING ID {
+                Simbolo* s = inserir($2, T_STRING, escopo_atual + 1);
+                $$.temp = (char*) malloc(50);
+                // Strings em C são passadas como ponteiros (char*)
+                sprintf($$.temp, "char* %s", s->temp); 
+                $$.c_expr = (char*) malloc(50);
+                sprintf($$.c_expr, "char* %s", s->nome);
+            }
+          | TOKEN_CHAR ID {
+                Simbolo* s = inserir($2, T_CHAR, escopo_atual + 1);
+                $$.temp = (char*) malloc(50);
+                sprintf($$.temp, "char %s", s->temp); 
+                $$.c_expr = (char*) malloc(50);
+                sprintf($$.c_expr, "char %s", s->nome);
+            }
+          | TOKEN_BOOL ID {
+                Simbolo* s = inserir($2, T_BOOL, escopo_atual + 1);
+                $$.temp = (char*) malloc(50);
+                // Booleano na sua linguagem vira int no C gerado
+                sprintf($$.temp, "int %s", s->temp); 
+                $$.c_expr = (char*) malloc(50);
+                sprintf($$.c_expr, "int %s", s->nome);
+            }
+          ;
+
+/* --- REGRAS DE ARGUMENTOS (Na Chamada) --- */
+argumentos : lista_args { $$ = $1; }
+           | /* vazio */ { 
+                $$.temp = strdup(""); 
+                $$.c_expr = strdup(""); 
+           }
+           ;
+
+lista_args : expressao {
+                $$.temp = strdup($1.temp);
+                $$.c_expr = strdup($1.c_expr);
+           }
+           | lista_args ',' expressao {
+                $$.temp = (char*) malloc(strlen($1.temp) + strlen($3.temp) + 5);
+                sprintf($$.temp, "%s, %s", $1.temp, $3.temp);
+
+                $$.c_expr = (char*) malloc(strlen($1.c_expr) + strlen($3.c_expr) + 5);
+                sprintf($$.c_expr, "%s, %s", $1.c_expr, $3.c_expr);
+           }
+           ;
 
 bloco : '{' { escopo_atual++; } comandos_bloco '}' {
             remover_simbolos_do_nivel(escopo_atual);
@@ -376,6 +606,7 @@ comando : declaracao ';'
             // 1. Marca visualmente no 3AC que é um FOR
             strcat(instrucoes, "\n");
             char* l_inicio = novo_label();
+            char* l_inc = novo_label();
             
             // [REMOVIDO] char* l_incremento = novo_label(); 
             
@@ -385,7 +616,7 @@ comando : declaracao ';'
             
             // ALTERAÇÃO: Como não há mais l_incremento, o 'continue' 
             // terá que pular para o início do laço.
-            strcpy(pilha_inicio[topo_laco], l_inicio);
+            strcpy(pilha_inicio[topo_laco], l_inc);
             
         } expressao ';' {
             // 2. Verifica a CONDIÇÃO
@@ -425,6 +656,9 @@ comando : declaracao ';'
             // [REMOVIDO] O sprintf que imprimia o pilha_inicio (L2) foi apagado aqui!
             
             // Imprime o incremento do 3AC que estava guardado direto
+            sprintf(buf, "%s:\n", pilha_inicio[topo_laco]);
+            strcat(instrucoes, buf);
+            
             strcat(instrucoes, inc_3ac);
             
             // Pula de volta pro início (A condicional no $5) no 3AC
@@ -618,6 +852,31 @@ comando : declaracao ';'
                     sprintf(buf, "%s[%s] = %s;\n", s->temp, $3.c_expr, c_expr_final);
                     strcat(c_body, buf);
                 }
+            }
+        }
+        | TOKEN_RETURN ';' {
+            strcat(instrucoes, "return;\n");
+            strcat(c_body, "return;\n");
+        }
+        | TOKEN_RETURN expressao ';' {
+            sprintf(buf, "return %s;\n", $2.temp);
+            strcat(instrucoes, buf);
+            
+            sprintf(buf, "return %s;\n", $2.c_expr);
+            strcat(c_body, buf);
+        }
+        | ID '(' argumentos ')' ';' {
+            Simbolo *s = buscar($1);
+            if (!s) { yyerror("Erro: Funcao nao declarada."); } 
+            else if (s->cat != C_FUNC) { yyerror("Erro: Nao e funcao."); } 
+            else {
+                
+                // Manda o $3.temp pros argumentos do TAC
+                sprintf(buf, "%s(%s);\n", s->temp, $3.temp);
+                strcat(instrucoes, buf);
+                
+                sprintf(buf, "%s(%s);\n", s->nome, $3.c_expr);
+                strcat(c_body, buf);
             }
         }
 
@@ -905,6 +1164,24 @@ expressao : NUM_INT {
                     $$.c_expr = strdup("ERRO");
                     $$.tipo_val = T_INT;
                     $$.tam_str = 0;
+                }
+            }
+            | ID '(' argumentos ')' {
+                Simbolo *s = buscar($1);
+                if (!s) { yyerror("Erro: Funcao nao declarada."); $$.tipo_val = T_INT; $$.temp = "ERRO"; $$.c_expr = strdup("ERRO"); } 
+                else if (s->cat != C_FUNC) { yyerror("Erro: Nao e funcao."); $$.tipo_val = T_INT; $$.temp = "ERRO"; $$.c_expr = strdup("ERRO"); } 
+                else if (s->tipo == T_VOID) { yyerror("Erro: Funcao VOID."); $$.tipo_val = T_INT; $$.temp = "ERRO"; $$.c_expr = strdup("ERRO"); } 
+                else {
+                    $$.tipo_val = s->tipo;
+                    $$.temp = novo_temp(s->tipo);
+                    
+                    // Manda o $3.temp pros argumentos do TAC
+                    sprintf(buf, "%s = %s(%s);\n", $$.temp, s->temp, $3.temp);
+                    strcat(instrucoes, buf);
+                    
+                    char *ce = (char*) malloc(256);
+                    sprintf(ce, "%s(%s)", s->nome, $3.c_expr);
+                    $$.c_expr = ce;
                 }
             }
 
@@ -1348,10 +1625,13 @@ int main() {
     printf("#include <stdlib.h>\n");
     printf("#include <string.h>\n");
     printf("#include <stdbool.h>\n\n");
+    
+    // Globais e Funções SEMPRE antes do main
+    printf("%s", declaracoes);
+    printf("%s\n", instrucoes_funcoes);
 
-    printf("int main()\n");
-    printf("{\n");
-    printf("%s\n", declaracoes);
+    printf("int main()\n{\n");
+    printf("%s", instrucoes_globais);
     printf("%s", instrucoes);
     printf("    return 0;\n");
     printf("}\n");
@@ -1368,8 +1648,12 @@ int main() {
     fprintf(arquivo_c, "#include <string.h>\n");
     fprintf(arquivo_c, "#include <stdbool.h>\n\n");
     
+    // Globais e Funções SEMPRE antes do main no arquivo C também
+    fprintf(arquivo_c, "%s", declaracoes);
+    fprintf(arquivo_c, "%s\n", instrucoes_funcoes);
+    
     fprintf(arquivo_c, "int main()\n{\n");
-    fprintf(arquivo_c, "%s\n", declaracoes);
+    fprintf(arquivo_c, "%s", instrucoes_globais);
     fprintf(arquivo_c, "%s", instrucoes);
     fprintf(arquivo_c, "    return 0;\n}\n");
 

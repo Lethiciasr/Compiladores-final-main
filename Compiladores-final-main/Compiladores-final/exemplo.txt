@@ -1,4 +1,20 @@
 main() {
-    string nome = "Teste ";
-    print(nome);
+    int numeros[4] = {10, 20, 30, 40};
+    float notas[3] = {7.5, 8.0, 9.5};
+    int i;
+    
+    print(numeros[1]);
+    
+    numeros[1] = 99;
+    
+    print(numeros[1]);
+    
+    print(notas[2]);
+    
+    for (i = 0; i < 4; i++) {
+        if (numeros[i] == 30) {
+            continue;
+        }
+        print(numeros[i]);
+    }
 }
