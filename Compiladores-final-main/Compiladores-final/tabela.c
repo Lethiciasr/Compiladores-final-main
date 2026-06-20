@@ -8,6 +8,7 @@ int t_cont = 1;
 int l_cont = 1;
 int tipos_t[1000];
 int tamanhos_t[1000];
+int eh_dinamico[1000]; // 1 = essa string T-temp veio de read() e é char* alocado dinamicamente
 
 
 char* novo_label() {
@@ -60,9 +61,13 @@ char* novo_temp_array(Tipo tipo, int tamanho) {
 void gerar_declaracoes_finais() {
     for (int i = 1; i < t_cont; i++) {
         char linha[100];
-        
+
+        // String lida via read(): vira ponteiro, sem tamanho fixo (alocada em runtime)
+        if (tipos_t[i] == T_STRING && eh_dinamico[i]) {
+            sprintf(linha, "char* T%d = NULL;\n", i);
+        }
         // Se o tamanho for maior que zero e não for string, é uma matriz!
-        if (tamanhos_t[i] > 0 && tipos_t[i] != T_STRING) {
+        else if (tamanhos_t[i] > 0 && tipos_t[i] != T_STRING) {
             switch(tipos_t[i]) {
                 case T_INT:   sprintf(linha, "int T%d[%d];\n", i, tamanhos_t[i]); break;
                 case T_FLOAT: sprintf(linha, "float T%d[%d];\n", i, tamanhos_t[i]); break;

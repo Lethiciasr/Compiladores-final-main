@@ -53,8 +53,10 @@ int escopo_atual = 0;
 %token TOKEN_MAIN
 %token <valor_str> ID NUM_INT NUM_FLOAT CHAR_LIT BOOL_LIT STRING_LIT
 %token TOKEN_INT TOKEN_FLOAT TOKEN_CHAR TOKEN_BOOL TOKEN_STRING ASSIGN PLUS
+%token TOKEN_VAR
 %token TOKEN_PRINT TOKEN_READ TOKEN_IF TOKEN_ELSE TOKEN_WHILE TOKEN_DO
 %token TOKEN_SWITCH TOKEN_CASE TOKEN_DEFAULT TOKEN_BREAK
+%token TOKEN_BREAK_ALL
 %token TOKEN_CONTINUE
 %token AND OR EQ NE LE GE NOT
 %token PLUS_ASSIGN MINUS_ASSIGN MULT_ASSIGN DIV_ASSIGN
@@ -68,6 +70,7 @@ int escopo_atual = 0;
 %left EQ NE '<' '>' LE GE
 %left PLUS '-'
 %left '*' '/'
+%right '^'
 %right NOT
 %right CAST
 %right UMINUS
@@ -488,10 +491,13 @@ comando : declaracao ';'
                     else if (s->tipo == T_FLOAT) formato = "%f";
                     else if (s->tipo == T_CHAR) formato = " %c"; 
 
-                    // 2. Gera o scanf correspondente direto na variável 'instrucoes'
+                    // 2. Gera o código correspondente direto na variável 'instrucoes'
                     if (s->tipo == T_STRING) {
-                        // Limita o scanf a 255 letras para evitar que estoure o array de 256
-                        sprintf(buf, "scanf(\"%%255s\", %s);\n", s->temp);
+                        int id_temp;
+                        sscanf(s->temp, "T%d", &id_temp);
+                        eh_dinamico[id_temp] = 1; // Marca o T-temp como dinâmico para gerar char*
+                        
+                        sprintf(buf, "%s = ler_string_dinamica();\n", s->temp);
                         strcat(instrucoes, buf);
                     } else {
                         sprintf(buf, "scanf(\"%s\", &%s);\n", formato, s->temp);
@@ -726,6 +732,22 @@ comando : declaracao ';'
 
             strcat(c_body, "break;\n");
         }
+        | TOKEN_BREAK_ALL ';' {
+
+            if (topo_laco > 0) {
+
+                // break_all: pula direto pro fim do laco/switch MAIS EXTERNO da pilha
+                sprintf(buf, "goto %s;\n", pilha_fim[0]);
+                strcat(instrucoes, buf);
+
+            } else {
+
+                yyerror("Erro Semantico: 'break_all' usado fora de um laco.");
+
+            }
+
+            strcat(c_body, "/* break_all */\n");
+        }
         | TOKEN_CONTINUE ';' {
             if (topo_laco == 0) {
                 yyerror("Erro Semantico: 'continue' usado fora de um laco de repeticao.");
@@ -741,16 +763,31 @@ comando : declaracao ';'
                 if (!s) yyerror("Erro: Variavel nao declarada.");
                 else if (s->tipo != $3.tipo_val) yyerror("Erro Semantico: Tipos incompativeis.");
                 else {
-                    // TAC: temp = x + expr
-                    char* t_op = novo_temp(s->tipo);
-                    sprintf(buf, "%s = %s + %s;\n", t_op, s->temp, $3.temp);
-                    strcat(instrucoes, buf);
-                    // Atribuição: x = temp
-                    sprintf(buf, "%s = %s;\n", s->temp, t_op);
-                    strcat(instrucoes, buf);
-                    // C
-                    sprintf(buf, "%s += %s;\n", s->nome, $3.c_expr);
-                    strcat(c_body, buf);
+                    if (s->tipo == T_STRING) {
+                        // Para strings, += significa concatenar no próprio destino usando strcat
+                        int id_temp;
+                        sscanf(s->temp, "T%d", &id_temp);
+                        tamanhos_t[id_temp] += $3.tam_str; // Atualiza o limite de tamanho
+
+                        // TAC
+                        sprintf(buf, "strcat(%s, %s);\n", s->temp, $3.temp);
+                        strcat(instrucoes, buf);
+                        
+                        // C Transpilado
+                        sprintf(buf, "strcat(%s, %s);\n", s->nome, $3.c_expr);
+                        strcat(c_body, buf);
+                    } else {
+                        // Lógica original para números (Int e Float)
+                        char* t_op = novo_temp(s->tipo);
+                        sprintf(buf, "%s = %s + %s;\n", t_op, s->temp, $3.temp);
+                        strcat(instrucoes, buf);
+                        
+                        sprintf(buf, "%s = %s;\n", s->temp, t_op);
+                        strcat(instrucoes, buf);
+                        
+                        sprintf(buf, "%s += %s;\n", s->nome, $3.c_expr);
+                        strcat(c_body, buf);
+                    }
                 }
             }
             | ID MINUS_ASSIGN expressao ';' {
@@ -1049,6 +1086,41 @@ declaracao : TOKEN_INT ID {
                     strcat(c_body, buf);
                 }
              }
+             | TOKEN_VAR ID ASSIGN expressao {
+                // Declaração implícita com inferência de tipo: o tipo da variável
+                // vem direto do tipo da expressão à direita, sem palavra-chave de tipo.
+                Tipo tipo_inferido = $4.tipo_val;
+                inserir($2, tipo_inferido, escopo_atual);
+                Simbolo *s = buscar($2);
+
+                if (tipo_inferido == T_STRING) {
+                    sprintf(buf, "char %s[256];\n", $2);
+                    strcat(c_decl, buf);
+
+                    int id_temp;
+                    sscanf(s->temp, "T%d", &id_temp);
+                    tamanhos_t[id_temp] = $4.tam_str;
+
+                    sprintf(buf, "strcpy(%s, %s);\n", s->temp, $4.temp);
+                    strcat(instrucoes, buf);
+
+                    sprintf(buf, "strcpy(%s, %s);\n", s->nome, $4.c_expr);
+                    strcat(c_body, buf);
+                } else {
+                    char* tipo_c = (tipo_inferido == T_FLOAT) ? "float" :
+                                   (tipo_inferido == T_CHAR)  ? "char"  :
+                                   "int"; // T_INT e T_BOOL viram int em C
+
+                    sprintf(buf, "%s %s;\n", tipo_c, $2);
+                    strcat(c_decl, buf);
+
+                    sprintf(buf, "%s = %s;\n", s->temp, $4.temp);
+                    strcat(instrucoes, buf);
+
+                    sprintf(buf, "%s = %s;\n", s->nome, $4.c_expr);
+                    strcat(c_body, buf);
+                }
+             }
            ;
 
 atribuicao : ID ASSIGN expressao {
@@ -1202,7 +1274,7 @@ expressao : NUM_INT {
                                  $$.temp, $3.temp);
                     strcat(instrucoes, buf);
                     
-                    char *ce = (char*) malloc(tamanho_soma);
+                    char *ce = (char*) malloc(strlen($1.c_expr) + strlen($3.c_expr) + 10);
                     sprintf(ce, "(%s + %s)", $1.c_expr, $3.c_expr);
                     $$.c_expr = ce;
 
@@ -1277,6 +1349,52 @@ expressao : NUM_INT {
                     char *ce = (char*) malloc(256);
                     sprintf(ce, "(%s - %s)", ce1, ce3);
                     $$.c_expr = ce;
+                }
+            }
+            | expressao '^' expressao {
+                if (($1.tipo_val != T_INT && $1.tipo_val != T_FLOAT) || $3.tipo_val != T_INT) {
+                    yyerror("Erro Semantico: Exponenciacao exige base numerica (int/float) e expoente inteiro.");
+                    $$.temp = "ERRO"; $$.c_expr = strdup("ERRO"); $$.tipo_val = T_INT;
+                } else {
+                    Tipo tipo_resultado = $1.tipo_val; // resultado tem o mesmo tipo da base
+
+                    char *t_result = novo_temp(tipo_resultado);
+                    char *t_i = novo_temp(T_INT);
+                    char *t_cmp = novo_temp(T_BOOL);
+                    char *l_inicio = novo_label();
+                    char *l_fim = novo_label();
+
+                    // T_result = 1; T_i = 0;
+                    sprintf(buf, "%s = 1;\n", t_result);
+                    strcat(instrucoes, buf);
+                    sprintf(buf, "%s = 0;\n", t_i);
+                    strcat(instrucoes, buf);
+
+                    // L_inicio:
+                    sprintf(buf, "%s:\n", l_inicio);
+                    strcat(instrucoes, buf);
+
+                    // se T_i >= expoente, encerra o laco
+                    sprintf(buf, "%s = %s >= %s;\n", t_cmp, t_i, $3.temp);
+                    strcat(instrucoes, buf);
+                    sprintf(buf, "if (%s) goto %s;\n", t_cmp, l_fim);
+                    strcat(instrucoes, buf);
+
+                    // T_result = T_result * base; T_i = T_i + 1; goto L_inicio;
+                    sprintf(buf, "%s = %s * %s;\n", t_result, t_result, $1.temp);
+                    strcat(instrucoes, buf);
+                    sprintf(buf, "%s = %s + 1;\n", t_i, t_i);
+                    strcat(instrucoes, buf);
+                    sprintf(buf, "goto %s;\n", l_inicio);
+                    strcat(instrucoes, buf);
+
+                    // L_fim:
+                    sprintf(buf, "%s:\n", l_fim);
+                    strcat(instrucoes, buf);
+
+                    $$.tipo_val = tipo_resultado;
+                    $$.temp = t_result;
+                    $$.c_expr = strdup(t_result);
                 }
             }
           | expressao '*' expressao {
@@ -1624,7 +1742,8 @@ int main() {
     printf("#include <stdio.h>\n");
     printf("#include <stdlib.h>\n");
     printf("#include <string.h>\n");
-    printf("#include <stdbool.h>\n\n");
+    printf("#include <stdbool.h>\n");
+    printf("#include \"io_dinamico.h\"\n\n");
     
     // Globais e Funções SEMPRE antes do main
     printf("%s", declaracoes);
@@ -1646,8 +1765,9 @@ int main() {
     fprintf(arquivo_c, "#include <stdio.h>\n");
     fprintf(arquivo_c, "#include <stdlib.h>\n");
     fprintf(arquivo_c, "#include <string.h>\n");
-    fprintf(arquivo_c, "#include <stdbool.h>\n\n");
-    
+    fprintf(arquivo_c, "#include <stdbool.h>\n");
+    fprintf(arquivo_c, "#include \"io_dinamico.h\"\n\n");
+
     // Globais e Funções SEMPRE antes do main no arquivo C também
     fprintf(arquivo_c, "%s", declaracoes);
     fprintf(arquivo_c, "%s\n", instrucoes_funcoes);

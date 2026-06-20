@@ -8,6 +8,7 @@
 %option yylineno
 %%
 
+"var"       { return TOKEN_VAR; }
 "int"       { return TOKEN_INT; }
 "float"     { return TOKEN_FLOAT; }
 "char"      { return TOKEN_CHAR; }
@@ -23,6 +24,7 @@
 "switch"    { return TOKEN_SWITCH; }
 "case"      { return TOKEN_CASE; }
 "default"   { return TOKEN_DEFAULT; }
+"break_all"  { return TOKEN_BREAK_ALL; }
 "break"     { return TOKEN_BREAK; }
 "continue"  { return TOKEN_CONTINUE; }
 \"[^\"]*\"  { yylval.valor_str = strdup(yytext); return STRING_LIT; }

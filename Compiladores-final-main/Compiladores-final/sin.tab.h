@@ -69,34 +69,36 @@ extern int yydebug;
     TOKEN_STRING = 270,            /* TOKEN_STRING  */
     ASSIGN = 271,                  /* ASSIGN  */
     PLUS = 272,                    /* PLUS  */
-    TOKEN_PRINT = 273,             /* TOKEN_PRINT  */
-    TOKEN_READ = 274,              /* TOKEN_READ  */
-    TOKEN_IF = 275,                /* TOKEN_IF  */
-    TOKEN_ELSE = 276,              /* TOKEN_ELSE  */
-    TOKEN_WHILE = 277,             /* TOKEN_WHILE  */
-    TOKEN_DO = 278,                /* TOKEN_DO  */
-    TOKEN_SWITCH = 279,            /* TOKEN_SWITCH  */
-    TOKEN_CASE = 280,              /* TOKEN_CASE  */
-    TOKEN_DEFAULT = 281,           /* TOKEN_DEFAULT  */
-    TOKEN_BREAK = 282,             /* TOKEN_BREAK  */
-    TOKEN_CONTINUE = 283,          /* TOKEN_CONTINUE  */
-    AND = 284,                     /* AND  */
-    OR = 285,                      /* OR  */
-    EQ = 286,                      /* EQ  */
-    NE = 287,                      /* NE  */
-    LE = 288,                      /* LE  */
-    GE = 289,                      /* GE  */
-    NOT = 290,                     /* NOT  */
-    PLUS_ASSIGN = 291,             /* PLUS_ASSIGN  */
-    MINUS_ASSIGN = 292,            /* MINUS_ASSIGN  */
-    MULT_ASSIGN = 293,             /* MULT_ASSIGN  */
-    DIV_ASSIGN = 294,              /* DIV_ASSIGN  */
-    INC = 295,                     /* INC  */
-    DEC = 296,                     /* DEC  */
-    TOKEN_VOID = 297,              /* TOKEN_VOID  */
-    TOKEN_RETURN = 298,            /* TOKEN_RETURN  */
-    CAST = 299,                    /* CAST  */
-    UMINUS = 300                   /* UMINUS  */
+    TOKEN_VAR = 273,               /* TOKEN_VAR  */
+    TOKEN_PRINT = 274,             /* TOKEN_PRINT  */
+    TOKEN_READ = 275,              /* TOKEN_READ  */
+    TOKEN_IF = 276,                /* TOKEN_IF  */
+    TOKEN_ELSE = 277,              /* TOKEN_ELSE  */
+    TOKEN_WHILE = 278,             /* TOKEN_WHILE  */
+    TOKEN_DO = 279,                /* TOKEN_DO  */
+    TOKEN_SWITCH = 280,            /* TOKEN_SWITCH  */
+    TOKEN_CASE = 281,              /* TOKEN_CASE  */
+    TOKEN_DEFAULT = 282,           /* TOKEN_DEFAULT  */
+    TOKEN_BREAK = 283,             /* TOKEN_BREAK  */
+    TOKEN_BREAK_ALL = 284,         /* TOKEN_BREAK_ALL  */
+    TOKEN_CONTINUE = 285,          /* TOKEN_CONTINUE  */
+    AND = 286,                     /* AND  */
+    OR = 287,                      /* OR  */
+    EQ = 288,                      /* EQ  */
+    NE = 289,                      /* NE  */
+    LE = 290,                      /* LE  */
+    GE = 291,                      /* GE  */
+    NOT = 292,                     /* NOT  */
+    PLUS_ASSIGN = 293,             /* PLUS_ASSIGN  */
+    MINUS_ASSIGN = 294,            /* MINUS_ASSIGN  */
+    MULT_ASSIGN = 295,             /* MULT_ASSIGN  */
+    DIV_ASSIGN = 296,              /* DIV_ASSIGN  */
+    INC = 297,                     /* INC  */
+    DEC = 298,                     /* DEC  */
+    TOKEN_VOID = 299,              /* TOKEN_VOID  */
+    TOKEN_RETURN = 300,            /* TOKEN_RETURN  */
+    CAST = 301,                    /* CAST  */
+    UMINUS = 302                   /* UMINUS  */
   };
   typedef enum yytokentype yytoken_kind_t;
 #endif
@@ -115,7 +117,7 @@ union YYSTYPE
         int tam_str;
     } info;
 
-#line 119 "sin.tab.h"
+#line 121 "sin.tab.h"
 
 };
 typedef union YYSTYPE YYSTYPE;

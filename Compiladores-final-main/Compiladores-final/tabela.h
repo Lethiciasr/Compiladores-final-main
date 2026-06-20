@@ -40,6 +40,7 @@ char* novo_temp_str(int tamanho_exato);
 char* novo_temp_array(Tipo tipo, int tamanho);
 
 extern int tamanhos_t[1000]; 
+extern int eh_dinamico[1000];
 void gerar_declaracoes_finais();
 
 #endif
