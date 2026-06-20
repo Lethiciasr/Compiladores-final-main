@@ -1,0 +1,18 @@
+main() {
+    int opcao;
+
+    opcao = 2;
+
+    switch(opcao) {
+        case 1:
+            print("Um");
+            break;
+
+        case 2:
+            print("Dois");
+            break;
+
+        default:
+            print("Outro");
+    }
+}
