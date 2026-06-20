@@ -107,7 +107,7 @@ extern int yydebug;
 #if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
 union YYSTYPE
 {
-#line 42 "sin.y"
+#line 46 "sin.y"
 
     char* valor_str;
     struct {

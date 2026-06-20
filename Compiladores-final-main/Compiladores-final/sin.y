@@ -35,6 +35,10 @@ int topo_laco = 0;
 Simbolo *simbolo_array_atual = NULL;
 int idx_array_atual = 0;
 int tam_array_atual = 0;
+int idx_dim1_atual = 0;
+int idx_dim2_atual = 0;
+int tam_dim1_atual = 0;
+int tam_dim2_atual = 0;
 
 int escopo_atual = 0;
 %}
@@ -1180,6 +1184,25 @@ declaracao : TOKEN_INT ID {
                 sprintf(buf, "char %s[%d][%d][256];\n", $2, dim1, dim2);
                 strcat(c_decl, buf);
              }
+             | TOKEN_INT ID '[' NUM_INT ']' '[' NUM_INT ']' ASSIGN '{' {
+                int dim1 = atoi($4);
+                int dim2 = atoi($7);
+                inserir_array2d($2, T_INT, escopo_atual, dim1, dim2);
+                
+                sprintf(buf, "int %s[%d][%d];\n", $2, dim1, dim2);
+                strcat(c_decl, buf);
+
+                // Configura os rastreadores antes de processar as chaves aninhadas
+                simbolo_array_atual = buscar($2);
+                tam_dim1_atual = dim1;
+                tam_dim2_atual = dim2;
+                idx_dim1_atual = 0;
+                
+             } lista_linhas '}' {
+                 
+                // Limpa o estado de rastreamento após terminar
+                simbolo_array_atual = NULL;
+             }
            ;
 
 atribuicao : ID ASSIGN expressao {
@@ -1805,6 +1828,59 @@ expressao : NUM_INT {
                 }
             } else {
                 yyerror("Erro Semantico: Excesso de elementos na inicializacao da matriz.");
+            }
+        }
+    }
+    lista_linhas : linha_valores
+             | lista_linhas ',' linha_valores
+             ;
+
+linha_valores : '{' { 
+        // Toda vez que abre uma chave de linha, zera o contador de colunas
+        idx_dim2_atual = 0; 
+    } lista_colunas '}' {
+        // Ao fechar a chave da linha, pula para a próxima linha
+        idx_dim1_atual++;
+    }
+    ;
+
+lista_colunas : expressao {
+        if (simbolo_array_atual) {
+            if (idx_dim1_atual < tam_dim1_atual && idx_dim2_atual < tam_dim2_atual) {
+                if (simbolo_array_atual->tipo != $1.tipo_val) {
+                    yyerror("Erro Semantico: Tipo incompativel na inicializacao da matriz 2D.");
+                } else {
+                    // TAC
+                    sprintf(buf, "%s[%d][%d] = %s;\n", simbolo_array_atual->temp, idx_dim1_atual, idx_dim2_atual, $1.temp);
+                    strcat(instrucoes, buf);
+                    // C Transpilado
+                    sprintf(buf, "%s[%d][%d] = %s;\n", simbolo_array_atual->nome, idx_dim1_atual, idx_dim2_atual, $1.c_expr);
+                    strcat(c_body, buf);
+                    
+                    idx_dim2_atual++; // Avança a coluna
+                }
+            } else {
+                yyerror("Erro Semantico: Excesso de elementos na inicializacao da matriz 2D.");
+            }
+        }
+    }
+    | lista_colunas ',' expressao {
+        if (simbolo_array_atual) {
+            if (idx_dim1_atual < tam_dim1_atual && idx_dim2_atual < tam_dim2_atual) {
+                if (simbolo_array_atual->tipo != $3.tipo_val) {
+                    yyerror("Erro Semantico: Tipo incompativel na inicializacao da matriz 2D.");
+                } else {
+                    // TAC
+                    sprintf(buf, "%s[%d][%d] = %s;\n", simbolo_array_atual->temp, idx_dim1_atual, idx_dim2_atual, $3.temp);
+                    strcat(instrucoes, buf);
+                    // C Transpilado
+                    sprintf(buf, "%s[%d][%d] = %s;\n", simbolo_array_atual->nome, idx_dim1_atual, idx_dim2_atual, $3.c_expr);
+                    strcat(c_body, buf);
+                    
+                    idx_dim2_atual++; // Avança a coluna
+                }
+            } else {
+                yyerror("Erro Semantico: Excesso de elementos na matriz 2D.");
             }
         }
     }
