@@ -1,12 +1,19 @@
 main() {
-    var x = 5;        
-    var y = 3.14;      
-    var nome = "Ana";  
+    int grade[3][3];
+    int linha;
+    int coluna;
+    int valor;
 
-    print(x);
-    print(y);
-    print(nome);
+    valor = 1;
 
-    var soma = x + 10;  
-    print(soma);
+    for (linha = 0; linha < 3; linha++) {
+        for (coluna = 0; coluna < 3; coluna++) {
+            grade[linha][coluna] = valor;
+            valor++;
+        }
+    }
+
+    print(grade[0][0]);
+    print(grade[1][1]);
+    print(grade[2][2]);
 }

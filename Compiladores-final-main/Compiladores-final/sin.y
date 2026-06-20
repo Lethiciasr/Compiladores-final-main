@@ -77,7 +77,7 @@ int escopo_atual = 0;
 
 %type <info> expressao parametros parametro argumentos lista_args
 %type <valor_str> if_cond
-%type <valor_str> incremento_for
+%type <info> incremento_for
 %type <valor_str> for_init
 
 %%
@@ -375,36 +375,32 @@ for_init : ID ASSIGN expressao {
 
 incremento_for : ID ASSIGN expressao {
     Simbolo *s = buscar($1);
-    if (!s) {
-        yyerror("Erro: Variavel nao declarada no incremento do for.");
-    } else {
-        sprintf(inc_3ac, "%s = %s;\n", s->temp, $3.temp);
-        char* inc_str = (char*) malloc(256);
-        sprintf(inc_str, "%s = %s", s->nome, $3.c_expr);
-        $$ = inc_str;
+    if (!s) { yyerror("Erro: Variavel nao declarada no incremento do for."); } 
+    else {
+        $$.temp = (char*) malloc(256);
+        sprintf($$.temp, "%s = %s;\n", s->temp, $3.temp);
+        $$.c_expr = (char*) malloc(256);
+        sprintf($$.c_expr, "%s = %s", s->nome, $3.c_expr);
     }
 }
 | ID INC {
     Simbolo *s = buscar($1);
-    if (!s) {
-        yyerror("Erro: Variavel nao declarada no incremento do for.");
-    } else {
-        // Gera o 3AC somando 1
-        sprintf(inc_3ac, "%s = %s + 1;\n", s->temp, s->temp);
-        char* inc_str = (char*) malloc(256);
-        sprintf(inc_str, "%s++", s->nome);
-        $$ = inc_str;
+    if (!s) { yyerror("Erro: Variavel nao declarada no incremento do for."); } 
+    else {
+        $$.temp = (char*) malloc(256);
+        sprintf($$.temp, "%s = %s + 1;\n", s->temp, s->temp);
+        $$.c_expr = (char*) malloc(256);
+        sprintf($$.c_expr, "%s++", s->nome);
     }
 }
 | ID DEC {
     Simbolo *s = buscar($1);
-    if (!s) {
-        yyerror("Erro: Variavel nao declarada no decremento do for.");
-    } else {
-        sprintf(inc_3ac, "%s = %s - 1;\n", s->temp, s->temp);
-        char* inc_str = (char*) malloc(256);
-        sprintf(inc_str, "%s--", s->nome);
-        $$ = inc_str;
+    if (!s) { yyerror("Erro: Variavel nao declarada no decremento do for."); } 
+    else {
+        $$.temp = (char*) malloc(256);
+        sprintf($$.temp, "%s = %s - 1;\n", s->temp, s->temp);
+        $$.c_expr = (char*) malloc(256);
+        sprintf($$.c_expr, "%s--", s->nome);
     }
 }
 ;
@@ -652,31 +648,28 @@ comando : declaracao ';'
             
         } incremento_for ')' {
             // 3. Fecha os parênteses do FOR no C
-            sprintf(buf, "%s) {\n", $9);
+            sprintf(buf, "%s) {\n", $9.c_expr);
             strcat(c_body, buf);
             
         } comando {
             // 4. Chegamos no final do laço!
-            topo_laco--; // Desce a pilha de laços
+            topo_laco--; 
             
-            // [REMOVIDO] O sprintf que imprimia o pilha_inicio (L2) foi apagado aqui!
-            
-            // Imprime o incremento do 3AC que estava guardado direto
             sprintf(buf, "%s:\n", pilha_inicio[topo_laco]);
             strcat(instrucoes, buf);
             
-            strcat(instrucoes, inc_3ac);
+            // Puxa o TAC do incremento (Substitui o antigo inc_3ac global)
+            strcat(instrucoes, $9.temp);
             
-            // Pula de volta pro início (A condicional no $5) no 3AC
+            // Pula de volta pro início
             sprintf(buf, "goto %s;\n", $<valor_str>5);
             strcat(instrucoes, buf);
             
-            // Marca o rótulo de FIM (L3 que agora será equivalente ao L2) no 3AC
+            // Marca o rótulo de FIM
             sprintf(buf, "%s:\n", $<valor_str>8);
             strcat(instrucoes, buf);
             strcat(instrucoes, "\n");
             
-            // Fecha a chave no C
             strcat(c_body, "}\n");
         }
         |TOKEN_SWITCH '(' expressao ')' {
@@ -861,7 +854,7 @@ comando : declaracao ';'
         | ID '[' expressao ']' ASSIGN expressao ';' {
             Simbolo *s = buscar($1);
             if (!s) yyerror("Erro: Matriz nao declarada.");
-            else if (!s->array) yyerror("Erro: Variavel nao e uma matriz.");
+            else if (s->dimensoes != 1) yyerror("Erro: Variavel nao e uma matriz.");
             else if ($3.tipo_val != T_INT) yyerror("Erro Semantico: Indice da matriz deve ser inteiro.");
             else {
                 char* valor_final  = $6.temp;
@@ -887,6 +880,35 @@ comando : declaracao ';'
                     sprintf(buf, "%s[%s] = %s;\n", s->temp, $3.temp, valor_final);
                     strcat(instrucoes, buf);
                     sprintf(buf, "%s[%s] = %s;\n", s->temp, $3.c_expr, c_expr_final);
+                    strcat(c_body, buf);
+                }
+            }
+        }
+        | ID '[' expressao ']' '[' expressao ']' ASSIGN expressao ';' {
+            Simbolo *s = buscar($1);
+            if (!s) yyerror("Erro: Matriz nao declarada.");
+            else if (s->dimensoes != 2) yyerror("Erro: Variavel nao e uma matriz 2D.");
+            else if ($3.tipo_val != T_INT || $6.tipo_val != T_INT) yyerror("Erro Semantico: Indices da matriz devem ser inteiros.");
+            else {
+                char* valor_final  = $9.temp;
+                char* c_expr_final = $9.c_expr;
+                int sem_erro = 1;
+
+                // Checagens de Cast similares as do 1D...
+                if (s->tipo == T_FLOAT && $9.tipo_val == T_INT) {
+                    valor_final = gerar_cast($9.temp, T_FLOAT);
+                    char *tmp = (char*) malloc(256);
+                    sprintf(tmp, "(float)(%s)", c_expr_final);
+                    c_expr_final = tmp;
+                } else if (s->tipo != $9.tipo_val) {
+                    yyerror("Erro Semantico: Atribuicao com tipo incompativel na matriz 2D.");
+                    sem_erro = 0;
+                }
+
+                if (sem_erro) {
+                    sprintf(buf, "%s[%s][%s] = %s;\n", s->temp, $3.temp, $6.temp, valor_final);
+                    strcat(instrucoes, buf);
+                    sprintf(buf, "%s[%s][%s] = %s;\n", s->temp, $3.c_expr, $6.c_expr, c_expr_final);
                     strcat(c_body, buf);
                 }
             }
@@ -1120,6 +1142,43 @@ declaracao : TOKEN_INT ID {
                     sprintf(buf, "%s = %s;\n", s->nome, $4.c_expr);
                     strcat(c_body, buf);
                 }
+             }
+           | TOKEN_INT ID '[' NUM_INT ']' '[' NUM_INT ']' {
+                int dim1 = atoi($4);
+                int dim2 = atoi($7);
+                inserir_array2d($2, T_INT, escopo_atual, dim1, dim2);
+                sprintf(buf, "int %s[%d][%d];\n", $2, dim1, dim2);
+                strcat(c_decl, buf);
+             }
+           | TOKEN_FLOAT ID '[' NUM_INT ']' '[' NUM_INT ']' {
+                int dim1 = atoi($4);
+                int dim2 = atoi($7);
+                inserir_array2d($2, T_FLOAT, escopo_atual, dim1, dim2);
+                sprintf(buf, "float %s[%d][%d];\n", $2, dim1, dim2);
+                strcat(c_decl, buf);
+             }
+           | TOKEN_CHAR ID '[' NUM_INT ']' '[' NUM_INT ']' {
+                int dim1 = atoi($4);
+                int dim2 = atoi($7);
+                inserir_array2d($2, T_CHAR, escopo_atual, dim1, dim2);
+                sprintf(buf, "char %s[%d][%d];\n", $2, dim1, dim2);
+                strcat(c_decl, buf);
+             }
+           | TOKEN_BOOL ID '[' NUM_INT ']' '[' NUM_INT ']' {
+                int dim1 = atoi($4);
+                int dim2 = atoi($7);
+                inserir_array2d($2, T_BOOL, escopo_atual, dim1, dim2);
+                // No seu código transpilado, 'bool' é tratado como 'int'
+                sprintf(buf, "int %s[%d][%d];\n", $2, dim1, dim2);
+                strcat(c_decl, buf);
+             }
+           | TOKEN_STRING ID '[' NUM_INT ']' '[' NUM_INT ']' {
+                int dim1 = atoi($4);
+                int dim2 = atoi($7);
+                inserir_array2d($2, T_STRING, escopo_atual, dim1, dim2);
+                // Uma "matriz de strings" em C transpilado precisa do tamanho da string no final
+                sprintf(buf, "char %s[%d][%d][256];\n", $2, dim1, dim2);
+                strcat(c_decl, buf);
              }
            ;
 
@@ -1661,8 +1720,8 @@ expressao : NUM_INT {
                 if (!s) {
                     yyerror("Erro: Matriz nao declarada.");
                     $$.tipo_val = T_INT; $$.temp = "ERRO"; $$.c_expr = strdup("ERRO");
-                } else if (!s->array) {
-                    yyerror("Erro: Variavel nao e uma matriz.");
+                } else if (s->dimensoes != 1) {
+                    yyerror("Erro: Variavel nao e um vetor de 1 dimensao.");
                     $$.tipo_val = T_INT; $$.temp = "ERRO"; $$.c_expr = strdup("ERRO");
                 } else if ($3.tipo_val != T_INT) {
                     yyerror("Erro Semantico: Indice da matriz deve ser inteiro.");
@@ -1678,6 +1737,31 @@ expressao : NUM_INT {
                     // Codigo C
                     char *ce = (char*) malloc(256);
                     sprintf(ce, "%s[%s]", s->temp, $3.c_expr);
+                    $$.c_expr = ce;
+                }
+            }
+            | ID '[' expressao ']' '[' expressao ']' {
+                Simbolo *s = buscar($1);
+                if (!s) {
+                    yyerror("Erro: Matriz nao declarada.");
+                    $$.tipo_val = T_INT; $$.temp = "ERRO"; $$.c_expr = strdup("ERRO");
+                } else if (s->dimensoes != 2) {
+                    yyerror("Erro: Variavel nao e uma matriz 2D.");
+                    $$.tipo_val = T_INT; $$.temp = "ERRO"; $$.c_expr = strdup("ERRO");
+                } else if ($3.tipo_val != T_INT || $6.tipo_val != T_INT) {
+                    yyerror("Erro Semantico: Indices da matriz devem ser inteiros.");
+                    $$.tipo_val = T_INT; $$.temp = "ERRO"; $$.c_expr = strdup("ERRO");
+                } else {
+                    $$.tipo_val = s->tipo;
+                    $$.temp = novo_temp(s->tipo);
+                    
+                    // TAC: T_novo = matriz[T_ind1][T_ind2]
+                    sprintf(buf, "%s = %s[%s][%s];\n", $$.temp, s->temp, $3.temp, $6.temp);
+                    strcat(instrucoes, buf);
+                    
+                    // Codigo C
+                    char *ce = (char*) malloc(256);
+                    sprintf(ce, "%s[%s][%s]", s->temp, $3.c_expr, $6.c_expr);
                     $$.c_expr = ce;
                 }
             }

@@ -12,8 +12,9 @@ typedef struct Simbolo {
     Tipo tipo;
     Categoria cat;
     int nivel;
-    int array;
-    int tamanho_array;
+    int dimensoes;     
+    int tamanho_dim1;  
+    int tamanho_dim2;
     struct Simbolo *proximo;
 } Simbolo;
 
@@ -21,6 +22,8 @@ typedef struct Simbolo {
 char* novo_temp(Tipo tipo); // gerar um novo nome de variavel temporaria
 Simbolo* inserir(char *nome, Tipo tipo, int nivel); //add uma nova variavel na tabela quando declarada
 Simbolo* inserir_array(char *nome, Tipo tipo, int nivel, int tamanho);
+Simbolo* inserir_array2d(char *nome, Tipo tipo, int nivel, int dim1, int dim2);
+char* novo_temp_array2d(Tipo tipo, int dim1, int dim2);
 Simbolo* inserir_funcao(char *nome, Tipo tipo, int nivel);
 Simbolo* buscar(char *nome); // vê se a variavel ja foi declarada
 void remover_simbolos_do_nivel(int nivel);
@@ -41,6 +44,8 @@ char* novo_temp_array(Tipo tipo, int tamanho);
 
 extern int tamanhos_t[1000]; 
 extern int eh_dinamico[1000];
+extern int dimensoes_t[1000]; 
+extern int tamanhos_t2[1000];
 void gerar_declaracoes_finais();
 
 #endif
