@@ -1,10 +1,17 @@
 main() {
-    int idade = 20;
-    float salario = 1500.00;
-    bool ativo = true;
-    string letra = "a";
-    string nome = "lethicia";
+    int opcao = 2;
 
-    print(nome);
-    print(idade);
+    switch (opcao) {
+        case 1:
+            print(100);
+            break;
+        case 2:
+            print(200);
+            break;
+        case 3:
+            print(300);
+            break;
+        default:
+            print(400);
+    }
 }

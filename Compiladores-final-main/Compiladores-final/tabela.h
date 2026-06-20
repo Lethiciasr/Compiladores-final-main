@@ -26,6 +26,7 @@ Simbolo* inserir_array2d(char *nome, Tipo tipo, int nivel, int dim1, int dim2);
 char* novo_temp_array2d(Tipo tipo, int dim1, int dim2);
 Simbolo* inserir_funcao(char *nome, Tipo tipo, int nivel);
 Simbolo* buscar(char *nome); // vê se a variavel ja foi declarada
+Simbolo* buscar_no_escopo(char *nome, int nivel);
 void remover_simbolos_do_nivel(int nivel);
 
 // Nova função auxiliar para conversão de tipos

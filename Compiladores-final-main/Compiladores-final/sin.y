@@ -991,6 +991,31 @@ declaracao : TOKEN_INT ID {
                 // Limpa o estado após terminar a inicialização
                 simbolo_array_atual = NULL; 
            }
+           | TOKEN_INT ID '[' NUM_INT ']' {
+                int tamanho = atoi($4);
+                inserir_array($2, T_INT, escopo_atual, tamanho);
+                sprintf(buf, "int %s[%d];\n", $2, tamanho);
+                strcat(c_decl, buf);
+             }
+           | TOKEN_FLOAT ID '[' NUM_INT ']' {
+                int tamanho = atoi($4);
+                inserir_array($2, T_FLOAT, escopo_atual, tamanho);
+                sprintf(buf, "float %s[%d];\n", $2, tamanho);
+                strcat(c_decl, buf);
+             }
+           | TOKEN_CHAR ID '[' NUM_INT ']' {
+                int tamanho = atoi($4);
+                inserir_array($2, T_CHAR, escopo_atual, tamanho);
+                sprintf(buf, "char %s[%d];\n", $2, tamanho);
+                strcat(c_decl, buf);
+             }
+           | TOKEN_BOOL ID '[' NUM_INT ']' {
+                int tamanho = atoi($4);
+                inserir_array($2, T_BOOL, escopo_atual, tamanho);
+                // 'bool' é tratado como 'int' no código transpilado
+                sprintf(buf, "int %s[%d];\n", $2, tamanho);
+                strcat(c_decl, buf);
+             }
            |
            TOKEN_FLOAT ID {
                 // DECLARAÇÃO SIMPLES

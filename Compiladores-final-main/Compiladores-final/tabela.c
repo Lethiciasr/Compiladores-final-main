@@ -3,6 +3,10 @@
 #include <string.h>
 #include "tabela.h"
 
+// yyerror é definido no sin.y (usa yylineno e os separadores "----"); declaramos aqui
+// pra poder reportar erro de redeclaração com o mesmo formato do resto do compilador.
+extern void yyerror(const char *s);
+
 Simbolo *tabela_global = NULL;
 int t_cont = 1; 
 int l_cont = 1;
@@ -126,6 +130,13 @@ char* gerar_cast(char* temp_origem, Tipo tipo_destino) {
 }
 
 Simbolo* inserir(char *nome, Tipo tipo, int nivel) {
+    if (buscar_no_escopo(nome, nivel) != NULL) {
+        char msg[100];
+        sprintf(msg, "Erro Semantico: Variavel '%s' ja declarada neste escopo.", nome);
+        yyerror(msg);
+        return NULL;
+    }
+
     Simbolo *novo = (Simbolo*) malloc(sizeof(Simbolo));
     strcpy(novo->nome, nome);
     char *nome_t = novo_temp(tipo); 
@@ -143,8 +154,10 @@ Simbolo* inserir(char *nome, Tipo tipo, int nivel) {
 }
 
 Simbolo* inserir_array(char *nome, Tipo tipo, int nivel, int tamanho) {
-    if (buscar(nome) != NULL) {
-        printf("Erro Semantico: Variavel '%s' ja declarada neste escopo.\n", nome);
+    if (buscar_no_escopo(nome, nivel) != NULL) {
+        char msg[100];
+        sprintf(msg, "Erro Semantico: Variavel '%s' ja declarada neste escopo.", nome);
+        yyerror(msg);
         return NULL;
     }
 
@@ -167,6 +180,13 @@ Simbolo* inserir_array(char *nome, Tipo tipo, int nivel, int tamanho) {
 }
 
 Simbolo* inserir_funcao(char *nome, Tipo tipo, int nivel) { 
+    if (buscar_no_escopo(nome, nivel) != NULL) {
+        char msg[100];
+        sprintf(msg, "Erro Semantico: Funcao '%s' ja declarada.", nome);
+        yyerror(msg);
+        return NULL;
+    }
+
     Simbolo *novo = (Simbolo*) malloc(sizeof(Simbolo));
     strcpy(novo->nome, nome);
     
@@ -186,8 +206,10 @@ Simbolo* inserir_funcao(char *nome, Tipo tipo, int nivel) {
 }
 
 Simbolo* inserir_array2d(char *nome, Tipo tipo, int nivel, int dim1, int dim2) {
-    if (buscar(nome) != NULL) {
-        printf("Erro Semantico: Variavel '%s' ja declarada neste escopo.\n", nome);
+    if (buscar_no_escopo(nome, nivel) != NULL) {
+        char msg[100];
+        sprintf(msg, "Erro Semantico: Variavel '%s' ja declarada neste escopo.", nome);
+        yyerror(msg);
         return NULL;
     }
     Simbolo *novo = (Simbolo*) malloc(sizeof(Simbolo));
@@ -209,6 +231,15 @@ Simbolo* inserir_array2d(char *nome, Tipo tipo, int nivel, int dim1, int dim2) {
 Simbolo* buscar(char *nome) {
     Simbolo *atual = tabela_global;
     while (atual != NULL) {
+        if (strcmp(atual->nome, nome) == 0) return atual;
+        atual = atual->proximo;
+    }
+    return NULL;
+}
+
+Simbolo* buscar_no_escopo(char *nome, int nivel) {
+    Simbolo *atual = tabela_global;
+    while (atual != NULL && atual->nivel == nivel) {
         if (strcmp(atual->nome, nome) == 0) return atual;
         atual = atual->proximo;
     }
