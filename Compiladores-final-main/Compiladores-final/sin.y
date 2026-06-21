@@ -58,7 +58,7 @@ int escopo_atual = 0;
 %token <valor_str> ID NUM_INT NUM_FLOAT CHAR_LIT BOOL_LIT STRING_LIT
 %token TOKEN_INT TOKEN_FLOAT TOKEN_CHAR TOKEN_BOOL TOKEN_STRING ASSIGN PLUS
 %token TOKEN_VAR
-%token TOKEN_PRINT TOKEN_READ TOKEN_IF TOKEN_ELSE TOKEN_WHILE TOKEN_DO
+%token TOKEN_PRINT TOKEN_READ TOKEN_IF TOKEN_ELSE TOKEN_WHILE TOKEN_DO 
 %token TOKEN_SWITCH TOKEN_CASE TOKEN_DEFAULT TOKEN_BREAK
 %token TOKEN_BREAK_ALL
 %token TOKEN_CONTINUE
@@ -484,6 +484,10 @@ comando : declaracao ';'
                     char erro_msg[100];
                     sprintf(erro_msg, "Erro: Variavel '%s' nao declarada para leitura.", $3);
                     yyerror(erro_msg);
+                } else if (s->cat == C_FUNC) {
+                    char erro_msg[100];
+                    sprintf(erro_msg, "Erro Semantico: '%s' e uma funcao, nao pode ler valor para ela.", $3);
+                    yyerror(erro_msg);
                 } else {
                     // 1. Descobre o formato para o scanf do C
                     char* formato = "";
@@ -496,8 +500,10 @@ comando : declaracao ';'
                         int id_temp;
                         sscanf(s->temp, "T%d", &id_temp);
                         eh_dinamico[id_temp] = 1; // Marca o T-temp como dinâmico para gerar char*
-                        
-                        sprintf(buf, "%s = ler_string_dinamica();\n", s->temp);
+
+                        // %m é extensão GNU/POSIX: o próprio scanf aloca a memória certa
+                        // (malloc interno) e devolve o ponteiro, sem precisar de função auxiliar
+                        sprintf(buf, "scanf(\"%%ms\", &%s);\n", s->temp);
                         strcat(instrucoes, buf);
                     } else {
                         sprintf(buf, "scanf(\"%s\", &%s);\n", formato, s->temp);
@@ -758,6 +764,7 @@ comando : declaracao ';'
         | ID PLUS_ASSIGN expressao ';' {
                 Simbolo *s = buscar($1);
                 if (!s) yyerror("Erro: Variavel nao declarada.");
+                else if (s->cat == C_FUNC) yyerror("Erro Semantico: nao pode usar '+=' em uma funcao.");
                 else if (s->tipo != $3.tipo_val) yyerror("Erro Semantico: Tipos incompativeis.");
                 else {
                     if (s->tipo == T_STRING) {
@@ -790,6 +797,7 @@ comando : declaracao ';'
             | ID MINUS_ASSIGN expressao ';' {
                 Simbolo *s = buscar($1);
                 if (!s) yyerror("Erro: Variavel nao declarada.");
+                else if (s->cat == C_FUNC) yyerror("Erro Semantico: nao pode usar '-=' em uma funcao.");
                 else if (s->tipo != $3.tipo_val) yyerror("Erro Semantico: Tipos incompativeis.");
                 else {
                     char* t_op = novo_temp(s->tipo);
@@ -804,6 +812,7 @@ comando : declaracao ';'
             | ID MULT_ASSIGN expressao ';' {
             Simbolo *s = buscar($1);
             if (!s) yyerror("Erro: Variavel nao declarada.");
+            else if (s->cat == C_FUNC) yyerror("Erro Semantico: nao pode usar '*=' em uma funcao.");
             else if (s->tipo != $3.tipo_val) yyerror("Erro Semantico: Tipos incompativeis.");
             else {
                 char* t_op = novo_temp(s->tipo);
@@ -818,6 +827,7 @@ comando : declaracao ';'
         | ID DIV_ASSIGN expressao ';' {
             Simbolo *s = buscar($1);
             if (!s) yyerror("Erro: Variavel nao declarada.");
+            else if (s->cat == C_FUNC) yyerror("Erro Semantico: nao pode usar '/=' em uma funcao.");
             else if (s->tipo != $3.tipo_val) yyerror("Erro Semantico: Tipos incompativeis.");
             else {
                 char* t_op = novo_temp(s->tipo);
@@ -832,6 +842,7 @@ comando : declaracao ';'
         | ID INC ';' {
             Simbolo *s = buscar($1);
             if (!s) yyerror("Erro: Variavel nao declarada para incremento.");
+            else if (s->cat == C_FUNC) yyerror("Erro Semantico: nao pode incrementar uma funcao.");
             else {
                 // Atualiza o valor no TAC (x = x + 1)
                 sprintf(buf, "%s = %s + 1;\n", s->temp, s->temp);
@@ -845,6 +856,7 @@ comando : declaracao ';'
         | ID DEC ';' {
             Simbolo *s = buscar($1);
             if (!s) yyerror("Erro: Variavel nao declarada para decremento.");
+            else if (s->cat == C_FUNC) yyerror("Erro Semantico: nao pode decrementar uma funcao.");
             else {
                 // Atualiza o valor no TAC (x = x - 1)
                 sprintf(buf, "%s = %s - 1;\n", s->temp, s->temp);
@@ -927,20 +939,6 @@ comando : declaracao ';'
             
             sprintf(buf, "return %s;\n", $2.c_expr);
             strcat(c_body, buf);
-        }
-        | ID '(' argumentos ')' ';' {
-            Simbolo *s = buscar($1);
-            if (!s) { yyerror("Erro: Funcao nao declarada."); } 
-            else if (s->cat != C_FUNC) { yyerror("Erro: Nao e funcao."); } 
-            else {
-                
-                // Manda o $3.temp pros argumentos do TAC
-                sprintf(buf, "%s(%s);\n", s->temp, $3.temp);
-                strcat(instrucoes, buf);
-                
-                sprintf(buf, "%s(%s);\n", s->nome, $3.c_expr);
-                strcat(c_body, buf);
-            }
         }
 
 declaracao : TOKEN_INT ID {
@@ -1236,6 +1234,10 @@ atribuicao : ID ASSIGN expressao {
         char erro_msg[100];
         sprintf(erro_msg, "Erro: Variavel '%s' nao declarada.", $1);
         yyerror(erro_msg);
+    } else if (s->cat == C_FUNC) {
+        char erro_msg[100];
+        sprintf(erro_msg, "Erro Semantico: '%s' e uma funcao, nao pode receber atribuicao.", $1);
+        yyerror(erro_msg);
     } else {
         char* valor_final  = $3.temp;
         char* c_expr_final = $3.c_expr;
@@ -1324,7 +1326,15 @@ expressao : NUM_INT {
             }
           | ID {
                 Simbolo *s = buscar($1);
-                if (s) {
+                if (s && s->cat == C_FUNC) {
+                    char msg[100];
+                    sprintf(msg, "Erro Semantico: '%s' e uma funcao, use %s(...) para chama-la.", $1, $1);
+                    yyerror(msg);
+                    $$.temp   = "ERRO";
+                    $$.c_expr = strdup("ERRO");
+                    $$.tipo_val = T_INT;
+                    $$.tam_str = 0;
+                } else if (s) {
                     $$.tipo_val = s->tipo;
                     $$.temp   = s->temp;
                     $$.c_expr = strdup(s->nome);
@@ -1349,14 +1359,20 @@ expressao : NUM_INT {
                 Simbolo *s = buscar($1);
                 if (!s) { yyerror("Erro: Funcao nao declarada."); $$.tipo_val = T_INT; $$.temp = "ERRO"; $$.c_expr = strdup("ERRO"); } 
                 else if (s->cat != C_FUNC) { yyerror("Erro: Nao e funcao."); $$.tipo_val = T_INT; $$.temp = "ERRO"; $$.c_expr = strdup("ERRO"); } 
-                else if (s->tipo == T_VOID) { yyerror("Erro: Funcao VOID."); $$.tipo_val = T_INT; $$.temp = "ERRO"; $$.c_expr = strdup("ERRO"); } 
                 else {
                     $$.tipo_val = s->tipo;
-                    $$.temp = novo_temp(s->tipo);
                     
-                    // Manda o $3.temp pros argumentos do TAC
-                    sprintf(buf, "%s = %s(%s);\n", $$.temp, s->temp, $3.temp);
-                    strcat(instrucoes, buf);
+                    if (s->tipo == T_VOID) {
+                        // Funções VOID não geram atribuição para temporário
+                        $$.temp = strdup(""); 
+                        sprintf(buf, "%s(%s);\n", s->temp, $3.temp); // Apenas chama
+                        strcat(instrucoes, buf);
+                    } else {
+                        // Funções com retorno (int, float, etc)
+                        $$.temp = novo_temp(s->tipo);
+                        sprintf(buf, "%s = %s(%s);\n", $$.temp, s->temp, $3.temp);
+                        strcat(instrucoes, buf);
+                    }
                     
                     char *ce = (char*) malloc(256);
                     sprintf(ce, "%s(%s)", s->nome, $3.c_expr);
@@ -1542,7 +1558,11 @@ expressao : NUM_INT {
                 } else {
                     char *ce1 = $1.c_expr, *ce3 = $3.c_expr;
                     
-                    // Só converte se os tipos forem DIFERENTES
+                    // Checagem segura em tempo de compilação (barra literais como 5 / 0)
+                    if (strcmp(ce3, "0") == 0 || strcmp(ce3, "0.0") == 0) {
+                        yyerror("Erro Semantico: Divisao por zero detectada pelo compilador.");
+                    }
+
                     if ($1.tipo_val != $3.tipo_val) {
                         if ($1.tipo_val == T_INT) {
                             $1.temp = gerar_cast($1.temp, T_FLOAT);
@@ -1560,11 +1580,11 @@ expressao : NUM_INT {
                     $$.tipo_val = ($1.tipo_val == T_FLOAT || $3.tipo_val == T_FLOAT) ? T_FLOAT : T_INT;
                     $$.temp = novo_temp($$.tipo_val);
                     
-                    // TAC
+                    // TAC 100% LIMPO - O "if" não existe mais aqui!
                     sprintf(buf, "%s = %s / %s;\n", $$.temp, $1.temp, $3.temp);
                     strcat(instrucoes, buf);
                     
-                    // Código C (Corrigido de '+' para '/')
+                    // Código C
                     char *ce = (char*) malloc(256);
                     sprintf(ce, "(%s / %s)", ce1, ce3);
                     $$.c_expr = ce;
@@ -1598,7 +1618,7 @@ expressao : NUM_INT {
                     sprintf(buf, "%s = %s != %s;\n", $$.temp, $1.temp, $3.temp);
                     strcat(instrucoes, buf);
                     char *ce = (char*) malloc(256);
-                    sprintf(ce, "(%s < %s)", $1.c_expr, $3.c_expr);
+                    sprintf(ce, "(%s != %s)", $1.c_expr, $3.c_expr);
                     $$.c_expr = ce;
                 }
             }
@@ -1706,8 +1726,8 @@ expressao : NUM_INT {
                      $$.c_expr = ce;
                 }
             }
-
-                            | '(' TOKEN_INT ')' expressao %prec CAST {
+            
+            | '(' TOKEN_INT ')' expressao %prec CAST {
                         char* temp_copia = novo_temp($4.tipo_val);
                         sprintf(buf, "%s = %s;\n", temp_copia, $4.temp);
                         strcat(instrucoes, buf);
@@ -1818,15 +1838,32 @@ expressao : NUM_INT {
           lista_valores : expressao {
         if (simbolo_array_atual) {
             if (idx_array_atual < tam_array_atual) {
-                // Checagem estrita de tipo (você pode adicionar casts aqui depois, se quiser)
-                if (simbolo_array_atual->tipo != $1.tipo_val) {
+                char* valor_final  = $1.temp;
+                char* c_expr_final = $1.c_expr;
+                int sem_erro = 1;
+
+                // Tenta fazer o cast se os tipos forem diferentes
+                if (simbolo_array_atual->tipo == T_FLOAT && $1.tipo_val == T_INT) {
+                    valor_final = gerar_cast($1.temp, T_FLOAT);
+                    char *tmp = (char*) malloc(256);
+                    sprintf(tmp, "(float)(%s)", c_expr_final);
+                    c_expr_final = tmp;
+                } else if (simbolo_array_atual->tipo == T_INT && $1.tipo_val == T_FLOAT) {
+                    valor_final = gerar_cast($1.temp, T_INT);
+                    char *tmp = (char*) malloc(256);
+                    sprintf(tmp, "(int)(%s)", c_expr_final);
+                    c_expr_final = tmp;
+                } else if (simbolo_array_atual->tipo != $1.tipo_val) {
                     yyerror("Erro Semantico: Tipo incompativel na inicializacao da matriz.");
-                } else {
+                    sem_erro = 0;
+                }
+
+                if (sem_erro) {
                     // TAC
-                    sprintf(buf, "%s[%d] = %s;\n", simbolo_array_atual->temp, idx_array_atual, $1.temp);
+                    sprintf(buf, "%s[%d] = %s;\n", simbolo_array_atual->temp, idx_array_atual, valor_final);
                     strcat(instrucoes, buf);
                     // C Transpilado
-                    sprintf(buf, "%s[%d] = %s;\n", simbolo_array_atual->nome, idx_array_atual, $1.c_expr);
+                    sprintf(buf, "%s[%d] = %s;\n", simbolo_array_atual->nome, idx_array_atual, c_expr_final);
                     strcat(c_body, buf);
                     
                     idx_array_atual++;
@@ -1839,14 +1876,31 @@ expressao : NUM_INT {
     | lista_valores ',' expressao {
         if (simbolo_array_atual) {
             if (idx_array_atual < tam_array_atual) {
-                if (simbolo_array_atual->tipo != $3.tipo_val) {
+                char* valor_final  = $3.temp;
+                char* c_expr_final = $3.c_expr;
+                int sem_erro = 1;
+
+                if (simbolo_array_atual->tipo == T_FLOAT && $3.tipo_val == T_INT) {
+                    valor_final = gerar_cast($3.temp, T_FLOAT);
+                    char *tmp = (char*) malloc(256);
+                    sprintf(tmp, "(float)(%s)", c_expr_final);
+                    c_expr_final = tmp;
+                } else if (simbolo_array_atual->tipo == T_INT && $3.tipo_val == T_FLOAT) {
+                    valor_final = gerar_cast($3.temp, T_INT);
+                    char *tmp = (char*) malloc(256);
+                    sprintf(tmp, "(int)(%s)", c_expr_final);
+                    c_expr_final = tmp;
+                } else if (simbolo_array_atual->tipo != $3.tipo_val) {
                     yyerror("Erro Semantico: Tipo incompativel na inicializacao da matriz.");
-                } else {
+                    sem_erro = 0;
+                }
+
+                if (sem_erro) {
                     // TAC
-                    sprintf(buf, "%s[%d] = %s;\n", simbolo_array_atual->temp, idx_array_atual, $3.temp);
+                    sprintf(buf, "%s[%d] = %s;\n", simbolo_array_atual->temp, idx_array_atual, valor_final);
                     strcat(instrucoes, buf);
                     // C Transpilado
-                    sprintf(buf, "%s[%d] = %s;\n", simbolo_array_atual->nome, idx_array_atual, $3.c_expr);
+                    sprintf(buf, "%s[%d] = %s;\n", simbolo_array_atual->nome, idx_array_atual, c_expr_final);
                     strcat(c_body, buf);
                     
                     idx_array_atual++;
@@ -1856,7 +1910,9 @@ expressao : NUM_INT {
             }
         }
     }
-    lista_linhas : linha_valores
+    ;
+
+lista_linhas : linha_valores
              | lista_linhas ',' linha_valores
              ;
 
@@ -1872,14 +1928,31 @@ linha_valores : '{' {
 lista_colunas : expressao {
         if (simbolo_array_atual) {
             if (idx_dim1_atual < tam_dim1_atual && idx_dim2_atual < tam_dim2_atual) {
-                if (simbolo_array_atual->tipo != $1.tipo_val) {
+                char* valor_final  = $1.temp;
+                char* c_expr_final = $1.c_expr;
+                int sem_erro = 1;
+
+                if (simbolo_array_atual->tipo == T_FLOAT && $1.tipo_val == T_INT) {
+                    valor_final = gerar_cast($1.temp, T_FLOAT);
+                    char *tmp = (char*) malloc(256);
+                    sprintf(tmp, "(float)(%s)", c_expr_final);
+                    c_expr_final = tmp;
+                } else if (simbolo_array_atual->tipo == T_INT && $1.tipo_val == T_FLOAT) {
+                    valor_final = gerar_cast($1.temp, T_INT);
+                    char *tmp = (char*) malloc(256);
+                    sprintf(tmp, "(int)(%s)", c_expr_final);
+                    c_expr_final = tmp;
+                } else if (simbolo_array_atual->tipo != $1.tipo_val) {
                     yyerror("Erro Semantico: Tipo incompativel na inicializacao da matriz 2D.");
-                } else {
+                    sem_erro = 0;
+                }
+
+                if (sem_erro) {
                     // TAC
-                    sprintf(buf, "%s[%d][%d] = %s;\n", simbolo_array_atual->temp, idx_dim1_atual, idx_dim2_atual, $1.temp);
+                    sprintf(buf, "%s[%d][%d] = %s;\n", simbolo_array_atual->temp, idx_dim1_atual, idx_dim2_atual, valor_final);
                     strcat(instrucoes, buf);
                     // C Transpilado
-                    sprintf(buf, "%s[%d][%d] = %s;\n", simbolo_array_atual->nome, idx_dim1_atual, idx_dim2_atual, $1.c_expr);
+                    sprintf(buf, "%s[%d][%d] = %s;\n", simbolo_array_atual->nome, idx_dim1_atual, idx_dim2_atual, c_expr_final);
                     strcat(c_body, buf);
                     
                     idx_dim2_atual++; // Avança a coluna
@@ -1892,14 +1965,31 @@ lista_colunas : expressao {
     | lista_colunas ',' expressao {
         if (simbolo_array_atual) {
             if (idx_dim1_atual < tam_dim1_atual && idx_dim2_atual < tam_dim2_atual) {
-                if (simbolo_array_atual->tipo != $3.tipo_val) {
+                char* valor_final  = $3.temp;
+                char* c_expr_final = $3.c_expr;
+                int sem_erro = 1;
+
+                if (simbolo_array_atual->tipo == T_FLOAT && $3.tipo_val == T_INT) {
+                    valor_final = gerar_cast($3.temp, T_FLOAT);
+                    char *tmp = (char*) malloc(256);
+                    sprintf(tmp, "(float)(%s)", c_expr_final);
+                    c_expr_final = tmp;
+                } else if (simbolo_array_atual->tipo == T_INT && $3.tipo_val == T_FLOAT) {
+                    valor_final = gerar_cast($3.temp, T_INT);
+                    char *tmp = (char*) malloc(256);
+                    sprintf(tmp, "(int)(%s)", c_expr_final);
+                    c_expr_final = tmp;
+                } else if (simbolo_array_atual->tipo != $3.tipo_val) {
                     yyerror("Erro Semantico: Tipo incompativel na inicializacao da matriz 2D.");
-                } else {
+                    sem_erro = 0;
+                }
+
+                if (sem_erro) {
                     // TAC
-                    sprintf(buf, "%s[%d][%d] = %s;\n", simbolo_array_atual->temp, idx_dim1_atual, idx_dim2_atual, $3.temp);
+                    sprintf(buf, "%s[%d][%d] = %s;\n", simbolo_array_atual->temp, idx_dim1_atual, idx_dim2_atual, valor_final);
                     strcat(instrucoes, buf);
                     // C Transpilado
-                    sprintf(buf, "%s[%d][%d] = %s;\n", simbolo_array_atual->nome, idx_dim1_atual, idx_dim2_atual, $3.c_expr);
+                    sprintf(buf, "%s[%d][%d] = %s;\n", simbolo_array_atual->nome, idx_dim1_atual, idx_dim2_atual, c_expr_final);
                     strcat(c_body, buf);
                     
                     idx_dim2_atual++; // Avança a coluna
@@ -1915,6 +2005,33 @@ lista_colunas : expressao {
 
 #include <stdlib.h> // Necessário para a função system()
 
+void escrever_tac_protegido(FILE *arq, const char *bloco) {
+    if (strlen(bloco) == 0) return;
+    char *copia = strdup(bloco);
+    char *linha = strtok(copia, "\n");
+    while (linha != NULL) {
+        // Se a linha for uma instrução aritmética de TAC (Começa com 'T') e for uma divisão (" / ")
+        char *pos_div = strstr(linha, " / ");
+        if (pos_div != NULL && linha[0] == 'T') {
+            char div_clean[50];
+            strcpy(div_clean, pos_div + 3); // Pega o divisor (Ex: "T2;")
+            
+            // Limpa o ponto e vírgula
+            if (strlen(div_clean) > 0 && div_clean[strlen(div_clean) - 1] == ';') {
+                div_clean[strlen(div_clean) - 1] = '\0';
+            }
+            
+            // Injeta a proteção no arquivo saida.c invisivelmente!
+            fprintf(arq, "if (%s == 0) { printf(\"Erro [Runtime]: Tentativa de divisao por zero!\\n\"); exit(1); }\n", div_clean);
+        }
+        
+        // Escreve a linha do TAC original (Ex: T3 = T1 / T2;)
+        fprintf(arq, "%s\n", linha);
+        linha = strtok(NULL, "\n");
+    }
+    free(copia);
+}
+
 int main() {
     yyparse();
     if (houve_erro) {
@@ -1927,8 +2044,7 @@ int main() {
     printf("#include <stdio.h>\n");
     printf("#include <stdlib.h>\n");
     printf("#include <string.h>\n");
-    printf("#include <stdbool.h>\n");
-    printf("#include \"io_dinamico.h\"\n\n");
+    printf("#include <stdbool.h>\n\n");
     
     // Globais e Funções SEMPRE antes do main
     printf("%s", declaracoes);
@@ -1950,16 +2066,16 @@ int main() {
     fprintf(arquivo_c, "#include <stdio.h>\n");
     fprintf(arquivo_c, "#include <stdlib.h>\n");
     fprintf(arquivo_c, "#include <string.h>\n");
-    fprintf(arquivo_c, "#include <stdbool.h>\n");
-    fprintf(arquivo_c, "#include \"io_dinamico.h\"\n\n");
+    fprintf(arquivo_c, "#include <stdbool.h>\n\n");
 
     // Globais e Funções SEMPRE antes do main no arquivo C também
     fprintf(arquivo_c, "%s", declaracoes);
-    fprintf(arquivo_c, "%s\n", instrucoes_funcoes);
+    escrever_tac_protegido(arquivo_c, instrucoes_funcoes);
+    fprintf(arquivo_c, "\n");
     
     fprintf(arquivo_c, "int main()\n{\n");
-    fprintf(arquivo_c, "%s", instrucoes_globais);
-    fprintf(arquivo_c, "%s", instrucoes);
+    escrever_tac_protegido(arquivo_c, instrucoes_globais);
+    escrever_tac_protegido(arquivo_c, instrucoes);
     fprintf(arquivo_c, "    return 0;\n}\n");
 
     fclose(arquivo_c);

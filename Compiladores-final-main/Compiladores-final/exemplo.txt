@@ -1,17 +1,16 @@
 main() {
-    int opcao = 2;
+    int estado = 2;
 
-    switch (opcao) {
+    switch (estado) {
         case 1:
-            print(100);
+            print(111);
             break;
         case 2:
-            print(200);
-            break;
-        case 3:
-            print(300);
+            print(222);
             break;
         default:
-            print(400);
+            print(333);
     }
+    
+    print(999);
 }
