@@ -1226,6 +1226,25 @@ declaracao : TOKEN_INT ID {
                 // Limpa o estado de rastreamento após terminar
                 simbolo_array_atual = NULL;
              }
+             | TOKEN_FLOAT ID '[' NUM_INT ']' '[' NUM_INT ']' ASSIGN '{' {
+                int dim1 = atoi($4);
+                int dim2 = atoi($7);
+                inserir_array2d($2, T_FLOAT, escopo_atual, dim1, dim2);
+                
+                sprintf(buf, "float %s[%d][%d];\n", $2, dim1, dim2);
+                strcat(c_decl, buf);
+
+                // Configura os rastreadores antes de processar as chaves aninhadas
+                simbolo_array_atual = buscar($2);
+                tam_dim1_atual = dim1;
+                tam_dim2_atual = dim2;
+                idx_dim1_atual = 0;
+                
+             } lista_linhas '}' {
+                 
+                // Limpa o estado de rastreamento após terminar
+                simbolo_array_atual = NULL;
+             }
            ;
 
 atribuicao : ID ASSIGN expressao {

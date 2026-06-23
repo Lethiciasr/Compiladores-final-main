@@ -3,31 +3,29 @@
 #include <string.h>
 #include <stdbool.h>
 
-int T1;
+char T1[27];
 int T2;
 int T3;
 int T4;
 int T5;
+int T6;
+char T7[16];
+void imprimir_alerta() {
+strcpy(T1, "Atencao: Calculo iniciado!");
+printf("%s\n", T1);
+}
+int calcular_area(int T2, int T3) {
+T4 = T2 * T3;
+return T4;
+}
 
 int main()
 {
-T1 = 2;
-T2 = T1 == 1;
-T3 = !T2;
-if (T3) goto L2;
-printf("%d\n", 111);
-goto L1;
-goto L1;
-L2:
-T4 = T1 == 2;
-T5 = !T4;
-if (T5) goto L3;
-printf("%d\n", 222);
-goto L1;
-goto L1;
-L3:
-printf("%d\n", 333);
-L1:
-printf("%d\n", 999);
+imprimir_alerta();
+T5 = calcular_area(5, 4);
+T6 = T5;
+strcpy(T7, "Area calculada:");
+printf("%s\n", T7);
+printf("%d\n", T6);
     return 0;
 }
